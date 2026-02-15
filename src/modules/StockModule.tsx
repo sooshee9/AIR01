@@ -524,11 +524,12 @@ const StockModule: React.FC = () => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     if (name === "itemName") {
-      const found = itemMasterState.find((item) => item.itemName === value);
-      console.log('[StockModule] itemName selected:', value, 'found item:', found);
+      // value is the itemCode (used as key in dropdown)
+      const found = itemMasterState.find((item) => item.itemCode === value);
+      console.log('[StockModule] item selected by code:', value, 'found item:', found);
       setItemInput((prev) => ({
         ...prev,
-        itemName: value,
+        itemName: found ? found.itemName : "",
         itemCode: found ? found.itemCode : "",
       }));
     } else {
@@ -651,13 +652,13 @@ const StockModule: React.FC = () => {
             {field.key === "itemName" && itemMasterState.length > 0 ? (
               <select
                 name="itemName"
-                value={itemInput.itemName}
+                value={itemInput.itemCode}
                 onChange={handleChange}
                 style={{ width: "100%", padding: 6, borderRadius: 4, border: "1px solid #bbb" }}
               >
                 <option value="">Select Item Name and Code</option>
                 {itemMasterState.map((item) => (
-                  <option key={item.itemCode} value={item.itemName}>
+                  <option key={item.id || item.itemCode} value={item.itemCode}>
                     {item.itemName} - {item.itemCode}
                   </option>
                 ))}
