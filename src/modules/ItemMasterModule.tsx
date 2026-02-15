@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase';
 import { getItemMaster, subscribeItemMaster, addItemMaster, updateItemMaster, deleteItemMaster } from '../utils/firestoreServices';
@@ -8,8 +8,6 @@ interface ItemMasterRecord {
   itemName: string;
   itemCode: string;
 }
-
-const LOCAL_STORAGE_KEY = 'itemMasterData';
 
 const ITEM_MASTER_FIELDS = [
   { key: 'itemName', label: 'Item Name', type: 'text' },
@@ -25,71 +23,14 @@ const ItemMasterModule: React.FC = () => {
   });
   const [editIdx, setEditIdx] = useState<number | null>(null);
   const firestoreUnsubRef = useRef<(() => void) | null>(null);
-  const recordsRef = useRef<ItemMasterRecord[]>(records);
-  // Function to load data from localStorage
-  const loadFromLocalStorage = useCallback(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (saved) {
-      try {
-        setRecords(JSON.parse(saved));
-      } catch (e) {
-        console.error('Failed to parse localStorage data', e);
-        setRecords([]);
-      }
-    } else {
-      setRecords([]);
-    }
-  }, []);
 
-  // Function to save data to localStorage
-  const saveToLocalStorage = useCallback((data: ItemMasterRecord[]) => {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
-  }, []);
-
-  // Function to sync localStorage data to Firestore when user logs in
-  const syncLocalToFirestore = async (uid: string, localData: ItemMasterRecord[]) => {
-    try {
-      // Get existing Firestore data
-      const firestoreData = await getItemMaster(uid);
-      
-      // If there's local data, merge it with Firestore data
-      if (localData.length > 0) {
-        // Create a map of existing Firestore items by itemCode to avoid duplicates
-        const firestoreMap = new Map(
-          firestoreData.map((item: any) => [item.itemCode, item])
-        );
-        
-        // Add local items that don't exist in Firestore
-        for (const localItem of localData) {
-          if (!firestoreMap.has(localItem.itemCode)) {
-            await addItemMaster(uid, {
-              itemName: localItem.itemName,
-              itemCode: localItem.itemCode
-            });
-          }
-        }
-        
-        // Clear localStorage after successful sync
-        localStorage.removeItem(LOCAL_STORAGE_KEY);
-      }
-    } catch (e) {
-      console.error('Failed to sync local data to Firestore', e);
-    }
-  };
-
-  // Handle auth state changes and Firestore subscription lifecycle
+  // Handle auth state changes and Firestore subscription lifecycle (Firestore-only)
   useEffect(() => {
-    // keep latest records in a ref for logout snapshot
-    recordsRef.current = records;
-  }, [records]);
-
-  useEffect(() => {
-    const authUnsubscribe = onAuthStateChanged(auth, async (u) => {
+    const authUnsubscribe = onAuthStateChanged(auth, (u) => {
       const uid = u ? u.uid : null;
 
-      // Logout: persist current records and cleanup subscription
+      // Logout: clear records and cleanup subscription
       if (!uid) {
-        try { saveToLocalStorage(recordsRef.current); } catch {}
         setRecords([]);
         setUserUid(null);
         if (firestoreUnsubRef.current) {
@@ -99,33 +40,16 @@ const ItemMasterModule: React.FC = () => {
         return;
       }
 
-      // Login
+      // Login: set UID and subscribe to Firestore
       setUserUid(uid);
 
-      // Load local cache for immediate display
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-      let localData: ItemMasterRecord[] = [];
-      if (saved) {
-        try {
-          localData = JSON.parse(saved);
-          if (localData.length) setRecords(localData);
-        } catch (e) {
-          console.error('Failed to parse localStorage data', e);
-        }
-      }
-
-      // Background sync of local -> Firestore
-      if (localData.length > 0) {
-        syncLocalToFirestore(uid, localData).catch((e) => console.error('syncLocalToFirestore failed', e));
-      }
-
-      // Ensure previous subscription cleaned up.
+      // Clean previous subscription if any
       if (firestoreUnsubRef.current) {
         try { firestoreUnsubRef.current(); } catch {}
         firestoreUnsubRef.current = null;
       }
 
-      // Small delay to avoid race with any pending cleanup
+      // Small delay to avoid race with cleanup
       setTimeout(() => {
         try {
           firestoreUnsubRef.current = subscribeItemMaster(uid, (docs) => {
@@ -147,15 +71,9 @@ const ItemMasterModule: React.FC = () => {
         firestoreUnsubRef.current = null;
       }
     };
-  // intentionally keep stable deps to register auth listener once
-  }, [loadFromLocalStorage, saveToLocalStorage]);
+  }, []);
 
-  // Save to localStorage whenever records change (when logged out)
-  useEffect(() => {
-    if (!userUid) {
-      saveToLocalStorage(records);
-    }
-  }, [records, userUid, saveToLocalStorage]);
+  // Firestore-only: no localStorage persistence
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
