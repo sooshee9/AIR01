@@ -167,10 +167,28 @@ const IndentModule: React.FC<IndentModuleProps> = ({ user }) => {
   const [_itemNames, _setItemNames] = useState<string[]>([]);
 
 
+  // Helper to normalize item codes for matching
+  const normalizeCode = (code: string): string => {
+    return String(code || '').trim().toUpperCase();
+  };
+
   // Helper to get stock for an item
   const getStock = (itemCode: string) => {
-    const stock = stockRecords.find((s: any) => s.itemCode === itemCode);
+    if (!itemCode) {
+      console.warn('[IndentModule] getStock called with empty itemCode');
+      return 0;
+    }
+    
+    const normalizedSearchCode = normalizeCode(itemCode);
+    const stock = stockRecords.find((s: any) => normalizeCode(s.itemCode) === normalizedSearchCode);
+    
+    if (!stock) {
+      console.debug('[IndentModule] Stock not found for itemCode:', itemCode, '(normalized:', normalizedSearchCode, ')', 'Available codes:', stockRecords.map((s: any) => s.itemCode));
+      return 0;
+    }
+    
     const closingStock = stock && !isNaN(Number(stock.closingStock)) ? Number(stock.closingStock) : 0;
+    console.debug('[IndentModule] Stock found for', itemCode, ':', closingStock);
     return closingStock;
   };
 
