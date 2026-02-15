@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import bus from '../utils/eventBus';
 import * as XLSX from 'xlsx';
 import { subscribeFirestoreDocs, replaceFirestoreCollection } from '../utils/firestoreSync';
+import { getItemMaster } from '../utils/firestoreServices';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -101,8 +102,26 @@ const IndentModule: React.FC<IndentModuleProps> = ({ user }) => {
   const [stockRecords, setStockRecords] = useState<any[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
 
-  // Subscribe to Firestore collections on mount
+  // Subscribe to Firestore collections and load itemMaster on mount
   useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (u) {
+        // Load itemMaster using one-time fetch (same pattern as StockModule/VSIR)
+        (async () => {
+          try {
+            const items = await getItemMaster(u.uid);
+            console.log('[IndentModule] ✅ getItemMaster returned:', items?.length || 0, 'items');
+            setItemMaster((items || []) as any[]);
+          } catch (e) {
+            console.error('[IndentModule] ❌ getItemMaster failed', e);
+            setItemMaster([]);
+          }
+        })();
+      } else {
+        setItemMaster([]);
+      }
+    });
+
     const unsubIndents = subscribeFirestoreDocs(uid, 'indentData', (docs) => {
       const formattedIndents = docs.map(doc => ({
         indentNo: doc.indentNo,
@@ -114,14 +133,6 @@ const IndentModule: React.FC<IndentModuleProps> = ({ user }) => {
       setIndents(formattedIndents);
     });
 
-    const unsubItemMaster = subscribeFirestoreDocs(uid, 'itemMasterData', (docs) => {
-      const formattedItems = docs.map(doc => ({
-        itemName: doc.itemName,
-        itemCode: doc.itemCode,
-      }));
-      setItemMaster(formattedItems);
-    });
-
     const unsubStock = subscribeFirestoreDocs(uid, 'stock-records', (docs) => {
       setStockRecords(docs);
     });
@@ -131,8 +142,8 @@ const IndentModule: React.FC<IndentModuleProps> = ({ user }) => {
     });
 
     return () => {
+      try { unsub(); } catch {}
       unsubIndents();
-      unsubItemMaster();
       unsubStock();
       unsubPO();
     };
