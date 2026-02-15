@@ -437,24 +437,26 @@ const StockModule: React.FC = () => {
         const coll2 = collection(db, 'userData', userUid, 'indentData');
         unsubIndent = onSnapshot(coll2, snap => setIndentState(snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }))));
       } catch {}
+      console.log('[StockModule] Auth effect: userUid set to', userUid);
       // Use subscribeItemMaster helper with error handling
       try {
+        console.log('[StockModule] Starting itemMaster subscription for uid:', userUid);
         unsubItemMaster = subscribeItemMaster(userUid, (items) => {
-          console.log('[StockModule] itemMasterData snapshot:', items.length, 'items received', items);
+          console.log('[StockModule] ✅ itemMasterData snapshot received:', items?.length || 0, 'items', items);
           setItemMasterState(items || []);
         });
       } catch (e) {
-        console.error('[StockModule] itemMasterData subscription failed:', e);
+        console.error('[StockModule] ❌ itemMasterData subscription failed:', e);
         // Fallback: try loading once from Firestore directly
         try {
           const coll3 = collection(db, 'userData', userUid, 'itemMasterData');
           onSnapshot(coll3, snap => {
             const items = snap.docs.map(d => ({ id: d.id, itemName: d.data().itemName, itemCode: d.data().itemCode }));
-            console.log('[StockModule] fallback itemMasterData snapshot:', items.length, 'items');
+            console.log('[StockModule] ✅ fallback itemMasterData snapshot:', items.length, 'items');
             setItemMasterState(items);
-          }, (err) => console.error('[StockModule] fallback also failed:', err));
+          }, (err) => console.error('[StockModule] ❌ fallback also failed:', err));
         } catch (fallbackErr) {
-          console.error('[StockModule] fallback subscription also failed:', fallbackErr);
+          console.error('[StockModule] ❌ fallback subscription also failed:', fallbackErr);
         }
       }
     } else {
@@ -649,14 +651,16 @@ const StockModule: React.FC = () => {
         {STOCK_MODULE_FIELDS.map((field) => (
           <div key={field.key} style={{ flex: "1 1 200px", minWidth: 180 }}>
             <label style={{ display: "block", marginBottom: 4 }}>{field.label}</label>
-            {field.key === "itemName" && itemMasterState.length > 0 ? (
+            {field.key === "itemName" ? (
               <select
                 name="itemName"
                 value={itemInput.itemCode}
                 onChange={handleChange}
-                style={{ width: "100%", padding: 6, borderRadius: 4, border: "1px solid #bbb" }}
+                style={{ width: "100%", padding: 6, borderRadius: 4, border: itemMasterState.length === 0 ? "2px solid red" : "1px solid #bbb" }}
               >
-                <option value="">Select Item Name and Code</option>
+                <option value="">
+                  {itemMasterState.length === 0 ? "No items in Item Master" : "Select Item Name and Code"}
+                </option>
                 {itemMasterState.map((item) => (
                   <option key={item.id || item.itemCode} value={item.itemCode}>
                     {item.itemName} - {item.itemCode}

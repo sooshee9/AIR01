@@ -9,6 +9,10 @@ export const subscribePsirs = (uid: string, cb: (docs: Array<PSIRDoc & { id: str
   const unsub = onSnapshot(q, snap => {
     const docs = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
     cb(docs);
+  }, (error) => {
+    console.error('[PSIRService] subscribePsirs failed (likely missing index):', error.code, error.message);
+    // Fallback: return empty array so modules don't crash
+    cb([]);
   });
   return unsub;
 };
