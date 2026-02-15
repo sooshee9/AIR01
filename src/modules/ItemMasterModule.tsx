@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../firebase';
-import { getItemMaster, subscribeItemMaster, addItemMaster, updateItemMaster, deleteItemMaster } from '../utils/firestoreServices';
+import { auth, db } from '../firebase';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 
 interface ItemMasterRecord {
-  id?: string | number;
+  id: string;
   itemName: string;
   itemCode: string;
 }
 
-const LOCAL_STORAGE_KEY = 'itemMasterData';
+const LOCAL_STORAGE_KEY = 'itemMasterDataCache';
 
 const ITEM_MASTER_FIELDS = [
   { key: 'itemName', label: 'Item Name', type: 'text' },
@@ -19,61 +19,102 @@ const ITEM_MASTER_FIELDS = [
 const ItemMasterModule: React.FC = () => {
   const [records, setRecords] = useState<ItemMasterRecord[]>([]);
   const [userUid, setUserUid] = useState<string | null>(null);
-  const [form, setForm] = useState<ItemMasterRecord>({
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({
     itemName: '',
     itemCode: '',
   });
   const [editIdx, setEditIdx] = useState<number | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
-  // Subscribe to Firestore item master when authenticated; fall back to localStorage when signed out
+  // Robust subscription with proper cleanup and error handling
   useEffect(() => {
     const authUnsubscribe = onAuthStateChanged(auth, (u) => {
       const uid = u ? u.uid : null;
       setUserUid(uid);
 
-      // Clean up previous subscription
+      // Clean up previous subscription immediately
       if (unsubscribeRef.current) {
-        try { unsubscribeRef.current(); } catch (e) {}
+        unsubscribeRef.current();
         unsubscribeRef.current = null;
       }
 
       if (!uid) {
-        // load from localStorage when logged out
-        const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (!saved) {
-          setRecords([]);
-          return;
-        }
-        try {
-          setRecords(JSON.parse(saved));
-        } catch {
-          setRecords([]);
-        }
+        // User logged out — clear records but keep cache
+        setRecords([]);
+        setLoading(false);
         return;
       }
 
-      // load initial and subscribe
+      // User logged in — load from Firestore with proper error handling
+      setLoading(true);
       try {
-        unsubscribeRef.current = subscribeItemMaster(uid, (docs: any[]) => {
-          setRecords(docs.map(d => ({ id: d.id, itemName: d.itemName, itemCode: d.itemCode })));
-        });
-      } catch (e) {
-        // fallback to one-time fetch
-        (async () => {
-          try {
-            const items = await getItemMaster(uid);
-            setRecords(items.map((d: any) => ({ id: d.id, itemName: d.itemName, itemCode: d.itemCode })));
-          } catch {
-            setRecords([]);
+        const col = collection(db, 'userData', uid, 'itemMasterData');
+        
+        // Set up Firestore subscription
+        unsubscribeRef.current = onSnapshot(
+          col,
+          (snap) => {
+            try {
+              const docs = snap.docs.map(d => ({
+                id: d.id,
+                itemName: d.data().itemName || '',
+                itemCode: d.data().itemCode || '',
+              } as ItemMasterRecord));
+              
+              setRecords(docs);
+              setLoading(false);
+              
+              // Cache to localStorage as backup
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(docs));
+              } catch (e) {
+                console.warn('[ItemMaster] localStorage cache failed:', e);
+              }
+            } catch (err) {
+              console.error('[ItemMaster] Error processing snapshot:', err);
+              setLoading(false);
+            }
+          },
+          (error) => {
+            console.error('[ItemMaster] Subscription error:', error);
+            setLoading(false);
+            
+            // Fallback to localStorage cache on subscription error
+            try {
+              const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
+              if (cached) {
+                setRecords(JSON.parse(cached));
+              }
+            } catch (e) {
+              console.warn('[ItemMaster] Cache fallback failed:', e);
+              setRecords([]);
+            }
           }
-        })();
+        );
+      } catch (err) {
+        console.error('[ItemMaster] Failed to set up subscription:', err);
+        setLoading(false);
+        
+        // Fallback to localStorage cache
+        try {
+          const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
+          if (cached) {
+            setRecords(JSON.parse(cached));
+          }
+        } catch (e) {
+          setRecords([]);
+        }
       }
     });
 
     return () => {
-      try { if (unsubscribeRef.current) unsubscribeRef.current(); } catch {}
-      try { authUnsubscribe(); } catch {}
+      // Clean up both subscriptions on unmount
+      if (unsubscribeRef.current) {
+        try { unsubscribeRef.current(); } catch (e) {}
+        unsubscribeRef.current = null;
+      }
+      try { authUnsubscribe(); } catch (e) {}
     };
   }, []);
 
@@ -85,35 +126,49 @@ const ItemMasterModule: React.FC = () => {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    (async () => {
-      if (userUid) {
-        try {
-          if (editIdx !== null) {
-            const existing = records[editIdx];
-            if (existing && existing.id) {
-              await updateItemMaster(userUid, String(existing.id), { itemName: form.itemName, itemCode: form.itemCode });
-            }
-          } else {
-            await addItemMaster(userUid, { itemName: form.itemName, itemCode: form.itemCode });
-          }
-        } catch (e) {
-          console.error('[ItemMaster] Firestore save failed', e);
+    if (!form.itemName.trim() || !form.itemCode.trim()) {
+      alert('Item Name and Item Code are required.');
+      return;
+    }
+
+    if (!userUid) {
+      alert('You must be logged in to save.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (editIdx !== null) {
+        // Update existing record
+        const rec = records[editIdx];
+        if (rec && rec.id) {
+          const docRef = doc(db, 'userData', userUid, 'itemMasterData', rec.id);
+          await updateDoc(docRef, {
+            itemName: form.itemName.trim(),
+            itemCode: form.itemCode.trim(),
+            updatedAt: serverTimestamp(),
+          });
         }
+        setEditIdx(null);
       } else {
-        if (editIdx !== null) {
-          setRecords((prev) => prev.map((rec, idx) => idx === editIdx ? { ...rec, itemName: form.itemName, itemCode: form.itemCode } : rec));
-          setEditIdx(null);
-        } else {
-          setRecords((prev) => [
-            ...prev,
-            { ...form, id: Date.now() },
-          ]);
-        }
+        // Add new record
+        const col = collection(db, 'userData', userUid, 'itemMasterData');
+        await addDoc(col, {
+          itemName: form.itemName.trim(),
+          itemCode: form.itemCode.trim(),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
       }
       setForm({ itemName: '', itemCode: '' });
-    })();
+    } catch (err) {
+      console.error('[ItemMaster] Save failed:', err);
+      alert('Failed to save record. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleEdit = (idx: number) => {
@@ -122,15 +177,28 @@ const ItemMasterModule: React.FC = () => {
   };
 
   // Delete handler
-  const handleDelete = (idx: number) => {
-    (async () => {
+  const handleDelete = async (idx: number) => {
+    if (!userUid) {
+      alert('You must be logged in to delete.');
+      return;
+    }
+
+    const confirmed = window.confirm('Delete this record?');
+    if (!confirmed) return;
+
+    setLoading(true);
+    try {
       const rec = records[idx];
-      if (userUid && rec && rec.id) {
-        try { await deleteItemMaster(userUid, String(rec.id)); } catch (e) { console.error('[ItemMaster] delete failed', e); }
-      } else {
-        setRecords(records => records.filter((_, i) => i !== idx));
+      if (rec && rec.id) {
+        const docRef = doc(db, 'userData', userUid, 'itemMasterData', rec.id);
+        await deleteDoc(docRef);
       }
-    })();
+    } catch (err) {
+      console.error('[ItemMaster] Delete failed:', err);
+      alert('Failed to delete record. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -150,7 +218,9 @@ const ItemMasterModule: React.FC = () => {
             />
           </div>
         ))}
-        <button type="submit" style={{ padding: '10px 24px', background: '#1a237e', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 500, marginTop: 24 }}>Add</button>
+        <button type="submit" disabled={loading} style={{ padding: '10px 24px', background: loading ? '#999' : '#1a237e', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 500, marginTop: 24, cursor: loading ? 'not-allowed' : 'pointer' }}>
+          {loading ? 'Saving...' : 'Add'}
+        </button>
       </form>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fafbfc' }}>
