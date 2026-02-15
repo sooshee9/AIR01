@@ -180,15 +180,46 @@ const IndentModule: React.FC<IndentModuleProps> = ({ user }) => {
     }
     
     const normalizedSearchCode = normalizeCode(itemCode);
-    const stock = stockRecords.find((s: any) => normalizeCode(s.itemCode) === normalizedSearchCode);
-    
-    if (!stock) {
-      console.debug('[IndentModule] Stock not found for itemCode:', itemCode, '(normalized:', normalizedSearchCode, ')', 'Available codes:', stockRecords.map((s: any) => s.itemCode));
+    // Try multiple candidate fields and matching strategies (code exact, name exact, alpha match)
+    const norm = (v: any) => (v === undefined || v === null) ? '' : String(v).trim().toUpperCase();
+    const alpha = (v: any) => norm(v).replace(/[^A-Z0-9]/g, '');
+
+    let matched: any = null;
+    const codeNorm = norm(itemCode || '');
+    const targetAlpha = alpha(itemCode || '');
+
+    for (const s of stockRecords || []) {
+      try {
+        const candidates = [s.itemCode, s.ItemCode, s.code, s.Code, s.item_code, s.itemName, s.ItemName, s.name, s.Name, s.sku, s.SKU];
+        // exact code match first
+        if (codeNorm && candidates.some(c => norm(c) === codeNorm)) { matched = s; break; }
+        // alpha/exact across fields
+        if (candidates.some(c => alpha(c) === targetAlpha || norm(c) === codeNorm)) { matched = s; break; }
+        // contains fallback
+        if (Object.values(s).some((v: any) => { try { const a = alpha(v); const n = norm(v); return a.includes(targetAlpha) || targetAlpha.includes(a) || n.includes(codeNorm) || codeNorm.includes(n); } catch { return false; } })) { matched = s; break; }
+      } catch (err) {
+        continue;
+      }
+    }
+
+    if (!matched) {
+      console.debug('[IndentModule] Stock not found for itemCode:', itemCode, '(normalized:', normalizedSearchCode, ')', 'Available sample codes:', stockRecords.map((s: any) => s.itemCode || s.ItemCode || s.Item_name).slice(0,10));
       return 0;
     }
-    
-    const closingStock = stock && !isNaN(Number(stock.closingStock)) ? Number(stock.closingStock) : 0;
-    console.debug('[IndentModule] Stock found for', itemCode, ':', closingStock);
+
+    const closingKeys = ['closingStock','closing_stock','ClosingStock','closing','closingQty','closing_qty','Closing','closing stock','Closing Stock','closingstock','closingStockQty','closing_stock_qty','ClosingStockQty','closingstockqty'];
+    let closingStock: number | null = null;
+    for (const k of closingKeys) {
+      if (matched[k] != null && !isNaN(Number(matched[k]))) { closingStock = Number(matched[k]); break; }
+    }
+    if (closingStock === null) {
+      // fallback to stockQty + purchaseActualQtyInStore
+      const stockQty = (matched.stockQty || matched.stock_qty || matched.stock || matched.StockQty || matched.currentStock) || 0;
+      const purchaseQty = (matched.purchaseActualQtyInStore || matched.purchase_actual_qty_in_store || matched.purchaseActualQty || matched.purchase_actual_qty) || 0;
+      closingStock = Number(stockQty) + Number(purchaseQty) || 0;
+    }
+
+    console.debug('[IndentModule] Stock found for', itemCode, ':', closingStock, 'matchedBy:', matched);
     return closingStock;
   };
 
