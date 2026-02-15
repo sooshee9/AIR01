@@ -4,7 +4,7 @@ import bus from '../utils/eventBus';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { subscribeStockRecords, addStockRecord, updateStockRecord, deleteStockRecord, subscribePurchaseOrders, subscribeVendorIssues, subscribeVendorDepts, subscribeVSIRRecords, subscribeItemMaster } from '../utils/firestoreServices';
+import { subscribeStockRecords, addStockRecord, updateStockRecord, deleteStockRecord, subscribePurchaseOrders, subscribeVendorIssues, subscribeVendorDepts, subscribeVSIRRecords, getItemMaster } from '../utils/firestoreServices';
 import { subscribePsirs } from '../utils/psirService';
 
 interface StockRecord {
@@ -409,7 +409,6 @@ const StockModule: React.FC = () => {
     let unsubVSIR: (() => void) | null = null;
     let unsubInHouse: (() => void) | null = null;
     let unsubIndent: (() => void) | null = null;
-    let unsubItemMaster: (() => void) | null = null;
 
     if (userUid) {
       try {
@@ -438,27 +437,18 @@ const StockModule: React.FC = () => {
         unsubIndent = onSnapshot(coll2, snap => setIndentState(snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }))));
       } catch {}
       console.log('[StockModule] Auth effect: userUid set to', userUid);
-      // Use subscribeItemMaster helper with error handling
-      try {
-        console.log('[StockModule] Starting itemMaster subscription for uid:', userUid);
-        unsubItemMaster = subscribeItemMaster(userUid, (items) => {
-          console.log('[StockModule] ✅ itemMasterData snapshot received:', items?.length || 0, 'items', items);
-          setItemMasterState(items || []);
-        });
-      } catch (e) {
-        console.error('[StockModule] ❌ itemMasterData subscription failed:', e);
-        // Fallback: try loading once from Firestore directly
+      
+      // load one-time master collections (same pattern as VSIR)
+      (async () => {
         try {
-          const coll3 = collection(db, 'userData', userUid, 'itemMasterData');
-          onSnapshot(coll3, snap => {
-            const items = snap.docs.map(d => ({ id: d.id, itemName: d.data().itemName, itemCode: d.data().itemCode }));
-            console.log('[StockModule] ✅ fallback itemMasterData snapshot:', items.length, 'items');
-            setItemMasterState(items);
-          }, (err) => console.error('[StockModule] ❌ fallback also failed:', err));
-        } catch (fallbackErr) {
-          console.error('[StockModule] ❌ fallback subscription also failed:', fallbackErr);
+          const items = await getItemMaster(userUid);
+          console.log('[StockModule] ✅ getItemMaster returned:', items?.length || 0, 'items', items);
+          setItemMasterState((items || []) as any[]);
+        } catch (e) {
+          console.error('[StockModule] ❌ getItemMaster failed', e);
+          setItemMasterState([]);
         }
-      }
+      })();
     } else {
       // clear dependent states when signed out
       setPsirsState([]);
@@ -480,7 +470,6 @@ const StockModule: React.FC = () => {
       try { if (unsubVSIR) unsubVSIR(); } catch {}
       try { if (unsubInHouse) unsubInHouse(); } catch {}
       try { if (unsubIndent) unsubIndent(); } catch {}
-      try { if (unsubItemMaster) unsubItemMaster(); } catch {}
     };
   }, [userUid]);
 
