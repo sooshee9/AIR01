@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth, db } from '../firebase';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { auth } from '../firebase';
+import { getItemMaster, subscribeItemMaster, addItemMaster, updateItemMaster, deleteItemMaster } from '../utils/firestoreServices';
 
 interface ItemMasterRecord {
-  id: string;
+  id?: string | number;
   itemName: string;
   itemCode: string;
 }
 
-const LOCAL_STORAGE_KEY = 'itemMasterData'; // Keep for migration only
+const LOCAL_STORAGE_KEY = 'itemMasterData';
 
 const ITEM_MASTER_FIELDS = [
   { key: 'itemName', label: 'Item Name', type: 'text' },
@@ -18,74 +18,56 @@ const ITEM_MASTER_FIELDS = [
 
 const ItemMasterModule: React.FC = () => {
   const [records, setRecords] = useState<ItemMasterRecord[]>([]);
-  const [form, setForm] = useState({
+  const [userUid, setUserUid] = useState<string | null>(null);
+  const [form, setForm] = useState<ItemMasterRecord>({
     itemName: '',
     itemCode: '',
   });
   const [editIdx, setEditIdx] = useState<number | null>(null);
-  const [userUid, setUserUid] = useState<string | null>(null);
 
-  // Migrate existing localStorage item master entries into Firestore on sign-in
-  // Subscribe to Firestore for realtime data
+  // Subscribe to Firestore item master when authenticated; fall back to localStorage when signed out
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
+    let unsub: (() => void) | null = null;
+    const au = onAuthStateChanged(auth, (u) => {
       const uid = u ? u.uid : null;
       setUserUid(uid);
-
       if (!uid) {
-        // User signed out
-        setRecords([]);
+        // load from localStorage when logged out
+        const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (!saved) {
+          setRecords([]);
+          return;
+        }
+        try {
+          setRecords(JSON.parse(saved));
+        } catch {
+          setRecords([]);
+        }
         return;
       }
 
-      // User signed in — set up subscription immediately
-      let unsubscribe: (() => void) | null = null;
+      // load initial and subscribe
       try {
-        const col = collection(db, 'userData', uid, 'itemMasterData');
-        unsubscribe = onSnapshot(col, (snap) => {
-          const mapped = snap.docs.map(d => ({
-            id: d.id,
-            itemName: d.data().itemName || '',
-            itemCode: d.data().itemCode || '',
-          } as ItemMasterRecord));
-          setRecords(mapped);
+        unsub = subscribeItemMaster(uid, (docs) => {
+          setRecords(docs.map(d => ({ id: d.id, itemName: d.itemName, itemCode: d.itemCode })));
         });
-      } catch (err) {
-        console.error('[ItemMasterModule] Firestore subscription error:', err);
-      }
-
-      // Migrate localStorage in the background (doesn't block subscription)
-      (async () => {
-        try {
-          const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-          if (raw) {
-            const arr = JSON.parse(raw || '[]');
-            if (Array.isArray(arr) && arr.length > 0) {
-              for (const it of arr) {
-                try {
-                  const payload = { ...it } as any;
-                  if (typeof payload.id !== 'undefined') delete payload.id;
-                  const col = collection(db, 'userData', uid, 'itemMasterData');
-                  await addDoc(col, { ...payload, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-                } catch (err) {
-                  console.warn('[ItemMasterModule] migration addDoc failed for item', it, err);
-                }
-              }
-              try { localStorage.removeItem(LOCAL_STORAGE_KEY); } catch {}
-            }
+      } catch (e) {
+        // fallback to one-time fetch
+        (async () => {
+          try {
+            const items = await getItemMaster(uid);
+            setRecords(items.map((d: any) => ({ id: d.id, itemName: d.itemName, itemCode: d.itemCode })));
+          } catch {
+            setRecords([]);
           }
-        } catch (err) {
-          console.error('[ItemMasterModule] Migration failed:', err);
-        }
-      })();
-
-      // Return cleanup function for this subscription
-      return () => {
-        try { if (unsubscribe) unsubscribe(); } catch {}
-      };
+        })();
+      }
     });
 
-    return () => { try { unsub(); } catch {} };
+    return () => {
+      try { if (unsub) unsub(); } catch {}
+      try { au(); } catch {}
+    };
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -96,52 +78,35 @@ const ItemMasterModule: React.FC = () => {
     }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.itemName || !form.itemCode) {
-      alert('Item Name and Item Code are required.');
-      return;
-    }
-
-    if (editIdx !== null) {
-      // Update existing record in Firestore
-      const rec = records[editIdx];
-      if (userUid && rec.id) {
-        try {
-          const docRef = doc(db, 'userData', userUid, 'itemMasterData', rec.id);
-          await updateDoc(docRef, {
-            itemName: form.itemName,
-            itemCode: form.itemCode,
-            updatedAt: serverTimestamp(),
-          });
-        } catch (err) {
-          console.error('[ItemMasterModule] Failed to update record in Firestore:', err);
-          alert('Failed to update record.');
-        }
-      }
-      setEditIdx(null);
-    } else {
-      // Add new record to Firestore
+    (async () => {
       if (userUid) {
         try {
-          const col = collection(db, 'userData', userUid, 'itemMasterData');
-          await addDoc(col, {
-            itemName: form.itemName,
-            itemCode: form.itemCode,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        } catch (err) {
-          console.error('[ItemMasterModule] Failed to add record to Firestore:', err);
-          alert('Failed to add record.');
+          if (editIdx !== null) {
+            const existing = records[editIdx];
+            if (existing && existing.id) {
+              await updateItemMaster(userUid, String(existing.id), { itemName: form.itemName, itemCode: form.itemCode });
+            }
+          } else {
+            await addItemMaster(userUid, { itemName: form.itemName, itemCode: form.itemCode });
+          }
+        } catch (e) {
+          console.error('[ItemMaster] Firestore save failed', e);
+        }
+      } else {
+        if (editIdx !== null) {
+          setRecords((prev) => prev.map((rec, idx) => idx === editIdx ? { ...rec, itemName: form.itemName, itemCode: form.itemCode } : rec));
+          setEditIdx(null);
+        } else {
+          setRecords((prev) => [
+            ...prev,
+            { ...form, id: Date.now() },
+          ]);
         }
       }
-    }
-
-    setForm({
-      itemName: '',
-      itemCode: '',
-    });
+      setForm({ itemName: '', itemCode: '' });
+    })();
   };
 
   const handleEdit = (idx: number) => {
@@ -150,18 +115,15 @@ const ItemMasterModule: React.FC = () => {
   };
 
   // Delete handler
-  const handleDelete = async (idx: number) => {
-    const rec = records[idx];
-    if (userUid && rec.id) {
-      try {
-        const docRef = doc(db, 'userData', userUid, 'itemMasterData', rec.id);
-        await deleteDoc(docRef);
-        // Don't update local state — let Firestore subscription auto-update
-      } catch (err) {
-        console.error('[ItemMasterModule] Failed to delete record from Firestore:', err);
-        alert('Failed to delete record.');
+  const handleDelete = (idx: number) => {
+    (async () => {
+      const rec = records[idx];
+      if (userUid && rec && rec.id) {
+        try { await deleteItemMaster(userUid, String(rec.id)); } catch (e) { console.error('[ItemMaster] delete failed', e); }
+      } else {
+        setRecords(records => records.filter((_, i) => i !== idx));
       }
-    }
+    })();
   };
 
   return (
@@ -181,30 +143,27 @@ const ItemMasterModule: React.FC = () => {
             />
           </div>
         ))}
-        <button type="submit" style={{ padding: '10px 24px', background: '#1a237e', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 500, marginTop: 24 }}>
-          {editIdx !== null ? 'Update' : 'Add'}
-        </button>
+        <button type="submit" style={{ padding: '10px 24px', background: '#1a237e', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 500, marginTop: 24 }}>Add</button>
       </form>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fafbfc' }}>
           <thead>
             <tr>
-              <th style={{ border: '1px solid #ddd', padding: 8, background: '#e3e6f3', fontWeight: 600 }}>S.No</th>
               {ITEM_MASTER_FIELDS.map((field) => (
                 <th key={field.key} style={{ border: '1px solid #ddd', padding: 8, background: '#e3e6f3', fontWeight: 600 }}>{field.label}</th>
               ))}
-              <th style={{ border: '1px solid #ddd', padding: 8, background: '#e3e6f3', fontWeight: 600 }}>Actions</th>
+              <th style={{ border: '1px solid #ddd', padding: 8, background: '#e3e6f3', fontWeight: 600 }}>Edit</th>
+              <th style={{ border: '1px solid #ddd', padding: 8, background: '#e3e6f3', fontWeight: 600 }}>Delete</th>
             </tr>
           </thead>
           <tbody>
             {records.map((rec, idx) => (
-              <tr key={rec.id}>
-                <td style={{ border: '1px solid #eee', padding: 8 }}>{idx + 1}</td>
+              <tr key={idx}>
                 {ITEM_MASTER_FIELDS.map((field) => (
                   <td key={field.key} style={{ border: '1px solid #eee', padding: 8 }}>{(rec as any)[field.key]}</td>
                 ))}
                 <td style={{ border: '1px solid #eee', padding: 8 }}>
-                  <button style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer', marginRight: 8 }} onClick={() => handleEdit(idx)}>Edit</button>
+                  <button style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer' }} onClick={() => handleEdit(idx)}>Edit</button>
                   <button onClick={() => handleDelete(idx)} style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer' }}>Delete</button>
                 </td>
               </tr>
