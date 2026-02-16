@@ -104,4 +104,4 @@ export const deletePsir = async (id: string) => {
   console.log('[psirService.deletePsir] ⚠️ DELETING FROM FIRESTORE - This should be removed on next subscription callback');
   await deleteDoc(doc(db, 'psirs', id));
   console.log('[psirService.deletePsir] ✅ SUCCESS - document deleted from Firestore:', id);
-  console.log('[psirService.deletePsir] 📌 Watch for subscription callback - document should no longer appear');
+  console.log('[psirService.deletePsir] 📌 Watch for subscription callback - document should no longer appear');};
