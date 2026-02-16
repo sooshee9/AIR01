@@ -617,7 +617,28 @@ const IndentModule: React.FC<IndentModuleProps> = ({ user }) => {
           </thead>
           <tbody>
             {newIndent.items.map((item, idx) => {
-              const remainingStock = getRemainingStock(item.itemCode);
+              // Calculate remaining stock after saved indents + pending items in this form
+              const totalStock = getStock(item.itemCode);
+              let totalAllocatedFromSaved = 0;
+              
+              // Add allocations from saved indents
+              indents.forEach((indent, indentIndex) => {
+                indent.items.forEach(savedItem => {
+                  if (savedItem.itemCode === item.itemCode) {
+                    const allocated = getAllocatedAvailableForIndent(item.itemCode, indentIndex, savedItem.qty);
+                    totalAllocatedFromSaved += allocated;
+                  }
+                });
+              });
+              
+              // Add allocations from pending items in current form (up to this item)
+              let totalAllocatedFromPending = 0;
+              for (let i = 0; i <= idx; i++) {
+                totalAllocatedFromPending += Number(newIndent.items[i].qty) || 0;
+              }
+              
+              const remainingStock = totalStock - totalAllocatedFromSaved - totalAllocatedFromPending;
+              
               return (
                 <tr key={idx}>
                   <td>{item.model}</td>
