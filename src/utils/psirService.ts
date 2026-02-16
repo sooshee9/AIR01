@@ -4,6 +4,7 @@ import { db } from '../firebase';
 type PSIRDoc = Record<string, any>;
 
 export const subscribePsirs = (uid: string, cb: (docs: Array<PSIRDoc & { id: string }>) => void) => {
+  console.log('[PSIRService.subscribePsirs] Setting up listener for user:', uid);
   const col = collection(db, 'psirs');
   
   // Try with composite index first (userId + createdAt)
@@ -29,7 +30,8 @@ export const subscribePsirs = (uid: string, cb: (docs: Array<PSIRDoc & { id: str
         const docs = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
         // Sort client-side by createdAt descending
         docs.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
-        console.debug('[PSIRService] Fetched PSIRs (fallback query):', docs.length, 'records for user:', uid);
+        console.log('[PSIRService.subscribePsirs] 🔔 SNAPSHOT (fallback) -', docs.length, 'PSIRs received');
+        console.log('[PSIRService.subscribePsirs] IDs:', docs.map(d => d.id));
         cb(docs);
       }, (error2) => {
         console.error('[PSIRService] Even fallback query failed:', error2.code, error2.message);
@@ -49,10 +51,12 @@ export const subscribePsirs = (uid: string, cb: (docs: Array<PSIRDoc & { id: str
   unsub = onSnapshot(qWithIndex, snap => {
     const docs = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
     docs.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
-    console.debug('[PSIRService] Fetched PSIRs (index query):', docs.length, 'records for user:', uid);
+    console.log('[PSIRService.subscribePsirs] 🔔 SNAPSHOT (index) -', docs.length, 'PSIRs received');
+    console.log('[PSIRService.subscribePsirs] IDs:', docs.map(d => d.id));
     cb(docs);
   }, handleIndexError);
   
+  console.log('[PSIRService.subscribePsirs] ✅ Listener set up and returning unsub function');
   return unsub;
 };
 

@@ -102,15 +102,26 @@ const PSIRModule: React.FC = () => {
     }
     console.debug('[PSIRModule] Setting up PSIR subscription for userId:', userUid);
     unsub = subscribePsirs(userUid, (docs) => {
-      console.debug('[PSIRModule][Firestore] Subscription callback received', docs.length, 'PSIR documents');
+      console.group('[PSIRModule] SUBSCRIPTION UPDATE RECEIVED');
+      console.log('📬 Firestore callback triggered');
+      console.log('📊 Documents received from Firestore:', docs.length);
+      console.log('📋 Document IDs:', docs.map(d => d.id));
+      
       const newPsirs = docs.map(d => ({ ...d })) as any[];
       // normalize items array
       const normalized = newPsirs.map((psir: any) => ({ ...psir, items: Array.isArray(psir.items) ? psir.items : [] }));
+      
+      console.log('✅ Normalized PSIR data - count:', normalized.length);
+      console.log('📝 PSIR records:', normalized.map(p => ({ id: p.id, indentNo: p.indentNo, itemCount: p.items.length })));
+      
       setPsirs(normalized);
       const existingPOs = new Set(normalized.map((psir: any) => psir.poNo).filter(Boolean));
       const existingIndents = new Set(normalized.map((psir: any) => `INDENT::${psir.indentNo}`).filter(id => id !== 'INDENT::'));
       setProcessedPOs(new Set([...existingPOs, ...existingIndents]));
-      console.debug('[PSIRModule][Firestore] Updated local state with', normalized.length, 'PSIRs');
+      
+      console.log('🎯 State updated - new psirs count:', normalized.length);
+      console.log('✅ Subscription callback complete');
+      console.groupEnd();
     });
 
     return () => {
@@ -1277,14 +1288,53 @@ const PSIRModule: React.FC = () => {
       </div>
 
       {/* PSIR Debug Panel Toggle */}
-      <div style={{ marginBottom: 12 }}>
+      <div style={{ marginBottom: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <button
           onClick={() => setPsirDebugOpen(prev => !prev)}
-          style={{ padding: '6px 10px', marginRight: 8, cursor: 'pointer' }}
+          style={{ padding: '6px 10px', cursor: 'pointer' }}
         >
           {psirDebugOpen ? 'Hide PSIR Debug' : 'Show PSIR Debug'}
         </button>
-        <button onClick={generatePSIRDebugReport} style={{ padding: '6px 10px', marginRight: 8, cursor: 'pointer' }}>Generate PSIR Debug Report</button>
+        <button onClick={generatePSIRDebugReport} style={{ padding: '6px 10px', cursor: 'pointer' }}>Generate PSIR Debug Report</button>
+        
+        <button 
+          onClick={async () => {
+            console.log('[PSIR] Manual refresh: Forcing re-fetch from Firestore');
+            if (userUid) {
+              try {
+                const freshData = await (async () => {
+                  // Use getPurchaseOrders to fetch fresh data
+                  return new Promise((resolve) => {
+                    // Re-trigger the subscription to get fresh data
+                    const unsub = subscribePsirs(userUid, (docs) => {
+                      console.log('[PSIR] Manual refresh completed - fresh data:', docs.length, 'records');
+                      resolve(docs);
+                      unsub(); // Unsubscribe after getting data
+                    });
+                  });
+                })();
+                alert('✅ Manual refresh completed! Check console for fresh data.');
+              } catch (err) {
+                console.error('[PSIR] Manual refresh failed:', err);
+                alert('❌ Refresh failed: ' + String(err));
+              }
+            } else {
+              alert('❌ User not authenticated');
+            }
+          }}
+          style={{ 
+            padding: '6px 10px', 
+            cursor: 'pointer',
+            background: '#4CAF50',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 4,
+            fontWeight: 600
+          }}
+        >
+          🔄 Refresh PSIR Data
+        </button>
+        
         <button 
           onClick={() => {
             try {
