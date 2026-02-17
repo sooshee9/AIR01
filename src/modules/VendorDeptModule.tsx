@@ -1258,12 +1258,16 @@ useEffect(() => {
 	// FIXED: Auto-add a Vendor Dept Order for every new PO in purchasePOs if not already present
 	// This function now ONLY reads from purchaseOrders state (loaded from Firestore)
 	React.useEffect(() => {
-		if (purchasePOs.length === 0) return;
+		const purchaseEntries = Array.isArray(purchaseOrders) && purchaseOrders.length > 0 ? purchaseOrders : (Array.isArray(purchaseData) ? purchaseData : []);
 		
-		// Use purchaseOrders state directly (already loaded from Firestore)
-		const purchaseEntries = Array.isArray(purchaseOrders) ? purchaseOrders : (Array.isArray(purchaseData) ? purchaseData : []);
-		console.debug('[VendorDeptModule][AutoImport] Using Firestore data - purchaseOrders count:', purchaseOrders.length, 'purchaseData count:', purchaseData.length);
-		console.debug('[VendorDeptModule][AutoImport] Entries to process:', purchaseEntries.length);
+		if (purchaseEntries.length === 0) {
+			console.debug('[VendorDeptModule][AutoImport] No purchase data available to auto-import');
+			return;
+		}
+		
+		console.info('[VendorDeptModule][AutoImport] ⏳ Starting auto-import - Using Firestore data');
+		console.debug('[VendorDeptModule][AutoImport] purchaseOrders count:', purchaseOrders.length, 'purchaseData count:', purchaseData.length);
+		console.debug('[VendorDeptModule][AutoImport] Total entries to process:', purchaseEntries.length);
 		
 		// Group purchase entries by poNo (normalized to uppercase for consistent comparison)
 		const poGroups: { [poNo: string]: any[] } = {};
@@ -1274,7 +1278,7 @@ useEffect(() => {
 			poGroups[normalizedPoNo].push(entry);
 		});
 		
-		console.debug('[VendorDeptModule][AutoImport] poGroups:', poGroups);
+		console.debug('[VendorDeptModule][AutoImport] Grouped POs:', Object.keys(poGroups).join(', '));
 		
 		// For each PO, check if an order exists in Vendor Dept Orders
 		// CRITICAL: Check both in-memory state AND localStorage to prevent duplicates
