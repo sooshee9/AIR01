@@ -102,6 +102,12 @@ const VSIRModule: React.FC = () => {
           setVendorDeptOrders(docs || []);
         });
 
+        // subscribe to PSIR records from Firestore
+        const unsubPsirs = subscribePsirs(uid, (docs) => {
+          console.debug('[VSIR] PSIR records updated:', docs.length, 'records');
+          setPsirData(docs || []);
+        });
+
         // load one-time master collections
         (async () => {
           try {
@@ -117,6 +123,7 @@ const VSIRModule: React.FC = () => {
         return () => {
           try { if (unsubVSIR) unsubVSIR(); } catch {}
           try { if (unsubVendorDepts) unsubVendorDepts(); } catch {}
+          try { if (unsubPsirs) unsubPsirs(); } catch {}
         };
       });
 
