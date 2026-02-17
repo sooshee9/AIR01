@@ -20,7 +20,7 @@ import './App.css';
 import { useUserRole } from './hooks/useUserRole';
 import { useUserDataSync } from './hooks/useUserDataSync';
 import { runDataDiagnostics } from './utils/diagnostics';
-import { hardResetAllData } from './utils/firestoreServices';
+import { hardResetAllData, verifyDataCleared } from './utils/firestoreServices';
 
 
 function App() {
@@ -71,8 +71,19 @@ function App() {
           <button onClick={async () => {
             if (confirm('⚠️ WARNING: This will delete ALL data except ItemMaster. Are you sure?')) {
               try {
-                await hardResetAllData(user.uid);
-                alert('✅ Hard reset completed! All data deleted except ItemMaster. Refreshing page...');
+                const resetResult = await hardResetAllData(user.uid);
+                console.log('[App] Hard reset result:', resetResult);
+                
+                // Verify deletion
+                const verifyResult = await verifyDataCleared(user.uid);
+                console.log('[App] Verification result:', verifyResult);
+                
+                if (verifyResult.allClear) {
+                  alert('✅ Hard reset completed! All data deleted except ItemMaster.\n\nRefreshing page...');
+                } else {
+                  alert(`⚠️ Hard reset completed but verify shows:\n${Object.entries(verifyResult.results).map(([k, v]) => `${k}: ${v}`).join('\n')}\n\nRefreshing page anyway...`);
+                }
+                
                 window.location.reload();
               } catch (err) {
                 alert('❌ Hard reset failed. Check console for details.');

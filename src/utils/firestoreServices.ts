@@ -402,19 +402,29 @@ export const hardResetAllData = async (uid: string) => {
       'indents'
     ];
     
+    const deletionResults: Record<string, number> = {};
+    
     // Delete all docs from each collection under users/{uid}
     for (const collectionName of collectionsToDelete) {
       try {
         const col = collection(db, 'users', uid, collectionName);
         const snap = await getDocs(col);
         
+        let deletedCount = 0;
         for (const doc of snap.docs) {
-          await deleteDoc(doc.ref);
+          try {
+            await deleteDoc(doc.ref);
+            deletedCount++;
+          } catch (err) {
+            console.error(`[FirestoreServices] Error deleting ${collectionName} doc:`, doc.id, err);
+          }
         }
         
-        console.log(`[FirestoreServices] Deleted ${snap.docs.length} documents from ${collectionName}`);
+        deletionResults[collectionName] = deletedCount;
+        console.log(`[FirestoreServices] Deleted ${deletedCount} documents from ${collectionName}`);
       } catch (err) {
-        console.error(`[FirestoreServices] Error deleting from ${collectionName}:`, err);
+        console.error(`[FirestoreServices] Error querying ${collectionName}:`, err);
+        deletionResults[collectionName] = 0;
       }
     }
     
@@ -434,9 +444,11 @@ export const hardResetAllData = async (uid: string) => {
         }
       }
       
+      deletionResults['psirs'] = deletedCount;
       console.log(`[FirestoreServices] Deleted ${deletedCount} PSIRs out of ${snap.docs.length}`);
     } catch (err) {
-      console.error('[FirestoreServices] Error deleting PSIRs:', err);
+      console.error('[FirestoreServices] Error querying PSIRs:', err);
+      deletionResults['psirs'] = 0;
     }
     
     // Clear all localStorage caches
@@ -448,7 +460,9 @@ export const hardResetAllData = async (uid: string) => {
       'vsirData',
       'psirData',
       'itemMasterData',
-      'userData'
+      'userData',
+      'stockData',
+      'inHouseIssueData'
     ];
     
     localStorageKeys.forEach(key => {
@@ -460,10 +474,58 @@ export const hardResetAllData = async (uid: string) => {
       }
     });
     
-    console.log('[FirestoreServices] Hard reset completed successfully');
-    return { success: true, message: 'All data deleted except ItemMaster' };
+    // Wait a moment for Firestore to finalize deletions
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Verify deletion by checking counts
+    console.log('[FirestoreServices] ✅ Hard reset completed:', deletionResults);
+    console.log('[FirestoreServices] Summary:');
+    Object.entries(deletionResults).forEach(([col, count]) => {
+      console.log(`  - ${col}: ${count} deleted`);
+    });
+    
+    return { success: true, message: 'All data deleted except ItemMaster', deletionResults };
   } catch (error) {
     logger.error('[FirestoreServices] Error during hard reset:', error);
     throw error;
   }
 };
+
+// Verify that collections are empty
+export const verifyDataCleared = async (uid: string) => {
+  try {
+    console.log('[FirestoreServices] Verifying data deletion...');
+    
+    const collectionsToCheck = [
+      'vendorIssues',
+      'vsirRecords',
+      'purchaseOrders',
+      'vendorDepts',
+      'indents'
+    ];
+    
+    const verificationResults: Record<string, number> = {};
+    
+    for (const collectionName of collectionsToCheck) {
+      const col = collection(db, 'users', uid, collectionName);
+      const snap = await getDocs(col);
+      verificationResults[collectionName] = snap.docs.length;
+    }
+    
+    // Check PSIRs
+    const psirCol = collection(db, 'psirs');
+    const q = query(psirCol, where('userId', '==', uid));
+    const psirSnap = await getDocs(q);
+    verificationResults['psirs'] = psirSnap.docs.length;
+    
+    const allClear = Object.values(verificationResults).every(count => count === 0);
+    
+    console.log('[FirestoreServices] ✅ Verification results:', verificationResults);
+    console.log(`[FirestoreServices] All data cleared: ${allClear}`);
+    
+    return { allClear, results: verificationResults };
+  } catch (error) {
+    console.error('[FirestoreServices] Error verifying data:', error);
+    return { allClear: false, results: {}, error: String(error) };
+  }
+}
