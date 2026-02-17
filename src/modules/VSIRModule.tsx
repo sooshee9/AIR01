@@ -701,6 +701,49 @@ const VSIRModule: React.FC = () => {
   return (
     <div>
       <h2>VSRI Module</h2>
+      
+      {/* Diagnostic Panel */}
+      <div style={{ marginBottom: 20, padding: 12, background: '#fff3cd', border: '2px solid #ffc107', borderRadius: 4 }}>
+        <h4 style={{ margin: '0 0 8px 0', color: '#856404' }}>📊 Data Import Diagnostic</h4>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8, fontSize: 12 }}>
+          <div>
+            <strong>Purchase Orders:</strong> {purchaseOrders.length} records
+            {purchaseOrders.length > 0 && (
+              <div style={{ fontSize: 10, marginTop: 4, background: '#fff', padding: 4, borderRadius: 2, maxHeight: 80, overflow: 'auto' }}>
+                {purchaseOrders.slice(0, 2).map((po, idx) => (
+                  <div key={idx}>
+                    PO: {po.poNo || po.materialPurchasePoNo} | Items: {po.items?.length || 0}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <strong>Purchase Data:</strong> {purchaseData.length} records
+            {purchaseData.length > 0 && (
+              <div style={{ fontSize: 10, marginTop: 4, background: '#fff', padding: 4, borderRadius: 2, maxHeight: 80, overflow: 'auto' }}>
+                {purchaseData.slice(0, 2).map((pd, idx) => (
+                  <div key={idx}>
+                    PO: {pd.poNo} | Items: {pd.items?.length || 0}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <strong>VSIR Records:</strong> {records.length} imported
+          </div>
+          <div>
+            <strong>User ID:</strong> {userUid ? '✅ Logged in' : '❌ Not logged in'}
+          </div>
+        </div>
+        {purchaseOrders.length === 0 && purchaseData.length === 0 && (
+          <p style={{ margin: '8px 0 0 0', color: '#856404' }}>
+            ⚠️ No purchase data found. Please add purchase orders first.
+          </p>
+        )}
+      </div>
+
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
         {VSRI_MODULE_FIELDS.map((field) => (
           <div key={field.key} style={{ flex: '1 1 200px', minWidth: 180 }}>
@@ -762,6 +805,45 @@ const VSIRModule: React.FC = () => {
           {editIdx !== null ? 'Update' : 'Add'}
         </button>
       </form>
+
+      {/* Manual Import Trigger */}
+      <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button
+          onClick={() => {
+            console.log('[VSIR] Manual trigger - Forcing auto-import...');
+            console.log('[VSIR] Purchase Orders:', purchaseOrders);
+            console.log('[VSIR] Purchase Data:', purchaseData);
+          }}
+          style={{
+            padding: '8px 16px',
+            background: '#ff9800',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 4,
+            fontWeight: 500,
+            cursor: 'pointer',
+          }}
+        >
+          🔍 View Data in Console
+        </button>
+        <button
+          onClick={() => {
+            alert(`Purchase Orders: ${purchaseOrders.length}\nPurchase Data: ${purchaseData.length}\nVSIR Records: ${records.length}`);
+          }}
+          style={{
+            padding: '8px 16px',
+            background: '#4caf50',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 4,
+            fontWeight: 500,
+            cursor: 'pointer',
+          }}
+        >
+          📊 Show Import Status
+        </button>
+      </div>
+
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fafbfc' }}>
           <thead>
