@@ -1658,22 +1658,6 @@ const handleVSIRUpdate = (event?: any) => {
 		setItemInput({ itemName: '', itemCode: '', materialIssueNo: '', qty: 0, closingStock: '', indentStatus: '', receivedQty: 0, okQty: 0, reworkQty: 0, rejectedQty: 0, grnNo: '', debitNoteOrQtyReturned: '', remarks: '' });
 	};
 
-	// Preview sync report: list items that would be changed
-	const previewVendorDeptSync = () => {
-		const raw = localStorage.getItem('vendorDeptData');
-		if (!raw) return [];
-		const vd = JSON.parse(raw) as VendorDeptOrder[];
-		const report: any[] = [];
-		vd.forEach((order, oIdx) => {
-			(order.items || []).forEach((it, iIdx) => {
-				const purchaseQty = getPurchaseQty(order.materialPurchasePoNo, it.itemCode) || 0;
-				report.push({ po: order.materialPurchasePoNo, itemCode: it.itemCode, currentQty: it.qty, purchaseQty, orderIdx: oIdx, itemIdx: iIdx });
-			});
-		});
-		console.log('[VendorDeptModule][PreviewSync] report:', report);
-		return report;
-	};
-
 	// Build a human-friendly debug report indicating where values come from
 	const buildDebugReport = () => {
 		const raw = localStorage.getItem('vendorDeptData');
