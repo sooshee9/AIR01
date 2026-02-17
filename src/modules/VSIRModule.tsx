@@ -868,51 +868,49 @@ const VSIRModule: React.FC = () => {
       </div>
 
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fafbfc' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', border: '1px solid #ccc', fontSize: 12 }}>
           <thead>
-            <tr>
+            <tr style={{ background: '#fff', borderBottom: '2px solid #333', fontWeight: 'bold' }}>
               {VSRI_MODULE_FIELDS.map((field) => (
-                <th key={field.key} style={{ border: '1px solid #ddd', padding: 8, background: '#e3e6f3', fontWeight: 600 }}>
-                  {field.label}
-                </th>
+                <th key={field.key} style={{ padding: '10px 8px', textAlign: 'left', borderRight: '1px solid #ccc' }}>{field.label}</th>
               ))}
-              <th style={{ border: '1px solid #ddd', padding: 8, background: '#e3e6f3', fontWeight: 600 }}>Edit</th>
-              <th style={{ border: '1px solid #ddd', padding: 8, background: '#e3e6f3', fontWeight: 600 }}>Delete</th>
+              <th style={{ padding: '10px 8px', textAlign: 'center' }}>Edit</th>
+              <th style={{ padding: '10px 8px', textAlign: 'center' }}>Delete</th>
             </tr>
           </thead>
           <tbody>
             {records.map((rec, idx) => (
-              <tr key={rec.id}>
+              <tr key={rec.id} style={{ borderBottom: '1px solid #ccc', background: '#fff' }}>
                 {VSRI_MODULE_FIELDS.map((field) => {
+                  const cellCommon: React.CSSProperties = { padding: '10px 8px', borderRight: '1px solid #ccc' };
                   if (field.key === 'dcNo') {
-                    // dcNo is MANUAL ENTRY - only show what user entered in VSIR
-                    return <td key={field.key} style={{ border: '1px solid #eee', padding: 8 }}>{rec.dcNo}</td>;
+                    return <td key={field.key} style={cellCommon}>{rec.dcNo}</td>;
                   }
                   if (field.key === 'vendorBatchNo') {
                     const vendorBatchNo = rec.vendorBatchNo || getVendorBatchNoForPO(rec.poNo) || '';
-                    return <td key={field.key} style={{ border: '1px solid #eee', padding: 8 }}>{vendorBatchNo}</td>;
+                    return <td key={field.key} style={cellCommon}>{vendorBatchNo}</td>;
                   }
-                  return <td key={field.key} style={{ border: '1px solid #eee', padding: 8 }}>{(rec as any)[field.key]}</td>;
+                  return <td key={field.key} style={cellCommon}>{(rec as any)[field.key]}</td>;
                 })}
-                <td style={{ border: '1px solid #eee', padding: 8 }}>
+                <td style={{ padding: '10px 8px', textAlign: 'center' }}>
                   <button
                     style={{
                       background: '#1976d2',
                       color: '#fff',
                       border: 'none',
-                      borderRadius: 4,
-                      padding: '4px 12px',
+                      borderRadius: 2,
+                      padding: '4px 8px',
                       cursor: 'pointer',
+                      fontSize: 11
                     }}
                     onClick={() => handleEdit(idx)}
                   >
                     Edit
                   </button>
                 </td>
-                <td style={{ border: '1px solid #eee', padding: 8 }}>
+                <td style={{ padding: '10px 8px', textAlign: 'center' }}>
                   <button
                     onClick={async () => {
-                      // delete from state and Firestore if logged in
                       const toDelete = records[idx];
                       setRecords(prev => prev.filter((_, i) => i !== idx));
                       if (userUid && toDelete && typeof toDelete.id === 'string') {
@@ -923,9 +921,10 @@ const VSIRModule: React.FC = () => {
                       background: '#e53935',
                       color: '#fff',
                       border: 'none',
-                      borderRadius: 4,
-                      padding: '4px 12px',
+                      borderRadius: 2,
+                      padding: '4px 8px',
                       cursor: 'pointer',
+                      fontSize: 11
                     }}
                   >
                     Delete
