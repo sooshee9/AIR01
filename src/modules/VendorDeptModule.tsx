@@ -289,6 +289,115 @@ const getPSIRDataByPO = (poNo: string | undefined, psirData?: any[]): any => {
 	}
 };
 
+	// Import Purchase Orders to Vendor Dept
+	const importPurchaseOrdersToVendorDept = () => {
+		try {
+			console.info('[VendorDeptModule] 🔵 MANUAL IMPORT TRIGGERED - User clicked Import button');
+			console.debug('[VendorDeptModule] purchaseOrders:', purchaseOrders);
+			console.debug('[VendorDeptModule] purchaseData:', purchaseData);
+			console.debug('[VendorDeptModule] entries:', entries);
+			console.debug('[VendorDeptModule] userUid:', userUid);
+			
+			// Use purchaseOrders if available, fallback to purchaseData
+			const ordersToImport = purchaseOrders.length > 0 ? purchaseOrders : purchaseData;
+			
+			if (ordersToImport.length === 0) {
+				console.warn('[VendorDeptModule] No purchase orders or purchase data to import');
+				alert('No purchase orders or purchase data found');
+				return;
+			}
+			
+			console.info('[VendorDeptModule] Using', purchaseOrders.length > 0 ? 'purchaseOrders' : 'purchaseData', '(' + ordersToImport.length + ' records)');
+			
+			let importedCount = 0;
+			const newEntries: VendorDeptOrder[] = [];
+			
+			ordersToImport.forEach((order: any, idx: number) => {
+				try {
+					const poNo = String(order.materialPurchasePoNo || order.poNo || '').trim();
+					const vendorName = String(order.vendorName || order.supplierName || '').trim();
+					
+					if (!poNo) {
+						console.debug(`[VendorDeptModule] Skipping order ${idx} - no PO number`);
+						return;
+					}
+					
+					// Check if already imported
+					const exists = entries.find((e: VendorDeptOrder) => String(e.materialPurchasePoNo || '').trim() === poNo);
+					if (exists) {
+						console.debug(`[VendorDeptModule] Skipping - already imported: ${poNo}`);
+						return;
+					}
+					
+					// Extract items
+					let items: VendorDeptItem[] = [];
+					if (Array.isArray(order.items) && order.items.length > 0) {
+						items = order.items.map((it: any) => ({
+							itemName: it.itemName || it.Item || '',
+							itemCode: it.itemCode || it.Code || '',
+							materialIssueNo: '',
+							qty: Number(it.purchaseQty || it.poQty || it.originalIndentQty || 0) || 0,
+							indentStatus: 'Open',
+							receivedQty: 0,
+							okQty: 0,
+							reworkQty: 0,
+							rejectedQty: 0,
+							grnNo: '',
+							debitNoteOrQtyReturned: '',
+							remarks: ''
+						}));
+					} else {
+						// Fallback: create single item from order
+						items = [{
+							itemName: order.itemName || order.Item || '',
+							itemCode: order.itemCode || order.Code || '',
+							materialIssueNo: '',
+							qty: 1,
+							indentStatus: 'Open',
+							receivedQty: 0,
+							okQty: 0,
+							reworkQty: 0,
+							rejectedQty: 0,
+							grnNo: '',
+							debitNoteOrQtyReturned: '',
+							remarks: ''
+						}];
+					}
+					
+					const newEntry: VendorDeptOrder = {
+						orderPlaceDate: new Date().toISOString().slice(0, 10),
+						materialPurchasePoNo: poNo,
+						oaNo: order.oaNo || '',
+						batchNo: order.batchNo || '',
+						vendorBatchNo: order.vendorBatchNo || '',
+						dcNo: '',
+						vendorName: vendorName,
+						items: items
+					};
+					
+					newEntries.push(newEntry);
+					importedCount++;
+					console.debug(`[VendorDeptModule] Imported: ${poNo} - ${vendorName}`);
+				} catch (err) {
+					console.error(`[VendorDeptModule] Error processing order ${idx}:`, err);
+				}
+			});
+			
+			if (importedCount > 0) {
+				setEntries(prev => [...prev, ...newEntries]);
+				console.info(`[VendorDeptModule] ✅ Successfully imported ${importedCount} purchase orders`);
+				alert(`✅ Successfully imported ${importedCount} purchase orders to Vendor Dept`);
+				bus.dispatchEvent(new CustomEvent('vendorDeptModule.updated', { detail: { entries: [...entries, ...newEntries] } }));
+			} else {
+				console.warn('[VendorDeptModule] No new purchase orders were imported');
+				alert('No new purchase orders to import (all already exist)');
+			}
+		} catch (error) {
+			console.error('[VendorDeptModule] Error importing purchase orders:', error);
+			alert('Error importing purchase orders: ' + String(error));
+		}
+	};
+
 const VendorDeptModule: React.FC = () => {
 
 	// Declare newOrder state before any useEffect that uses it
@@ -1993,6 +2102,34 @@ const handleVSIRUpdate = (event?: any) => {
 		<div>
 			<div>
 				<h2>Vendor Dept Module</h2>
+				<div style={{ marginBottom: 16, padding: 12, background: '#e8f5e8', border: '1px solid #4caf50', borderRadius: 6 }}>
+					<h3>Import Purchase Orders to Vendor Dept</h3>
+					<div style={{ marginBottom: 12, fontSize: '14px', lineHeight: 1.6 }}>
+						<div><strong>Status:</strong></div>
+						<div>📋 Purchase Orders Loaded: <span style={{ fontWeight: 'bold', color: purchaseOrders.length > 0 ? '#4caf50' : '#999' }}>{purchaseOrders.length}</span></div>
+						<div>📋 Purchase Data Loaded: <span style={{ fontWeight: 'bold', color: purchaseData.length > 0 ? '#4caf50' : '#999' }}>{purchaseData.length}</span></div>
+						<div>📦 Vendor Dept Records: <span style={{ fontWeight: 'bold' }}>{entries.length}</span></div>
+						<div>👤 User: <span style={{ fontWeight: 'bold', color: userUid ? '#4caf50' : '#f44336' }}>{userUid ? '✓ Logged in' : '✗ Not authenticated'}</span></div>
+					</div>
+					<p style={{ marginBottom: 8, fontSize: '13px', color: '#666' }}>
+						{purchaseOrders.length === 0 && purchaseData.length === 0 ? '⚠️ No purchase orders or data loaded yet' : `Ready to import ${Math.max(purchaseOrders.length, purchaseData.length)} records`}
+					</p>
+					<button 
+						onClick={() => importPurchaseOrdersToVendorDept()}
+						disabled={(purchaseOrders.length === 0 && purchaseData.length === 0) || !userUid}
+						style={{ 
+							padding: '8px 16px', 
+							backgroundColor: (purchaseOrders.length === 0 && purchaseData.length === 0) || !userUid ? '#ccc' : '#4caf50', 
+							color: 'white', 
+							border: 'none', 
+							borderRadius: 4, 
+							cursor: (purchaseOrders.length === 0 && purchaseData.length === 0) || !userUid ? 'not-allowed' : 'pointer',
+							fontWeight: 600
+						}}
+					>
+						Import Purchase Orders to Vendor Dept
+					</button>
+				</div>
 				<div style={{ marginBottom: 16, display: 'flex', gap: 8, background: '#ffffcc', padding: 12, borderRadius: 4, border: '1px solid #ffcc00' }}>
 					<button onClick={() => {
 						const poNo = newOrder.materialPurchasePoNo;
