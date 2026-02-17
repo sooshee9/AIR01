@@ -406,6 +406,24 @@ const VendorDeptModule: React.FC = () => {
 		};
 	}, [userUid]);
 
+	// Debug: Log data state changes
+	useEffect(() => {
+		// Use purchaseOrders if available, fallback to purchaseData
+		const ordersToCheck = purchaseOrders && Array.isArray(purchaseOrders) && purchaseOrders.length > 0 ? purchaseOrders : purchaseData;
+		
+		if (ordersToCheck && Array.isArray(ordersToCheck)) {
+			const poList = ordersToCheck.map((order: any) => order.poNo).filter(Boolean);
+			setPurchasePOs(poList);
+			console.debug('[VendorDeptModule] Updated PO list from', purchaseOrders.length > 0 ? 'purchaseOrders' : 'purchaseData', ':', poList.length, 'POs');
+			
+			// Always auto-select latest if not set
+			if (poList.length > 0 && !newOrder.materialPurchasePoNo) {
+				setNewOrder(prev => ({ ...prev, materialPurchasePoNo: poList[poList.length - 1] }));
+				console.debug('[VendorDeptModule] Auto-selected latest PO:', poList[poList.length - 1]);
+			}
+		}
+	}, [newOrder.materialPurchasePoNo, purchaseOrders, purchaseData]);
+
 	// Get all PO numbers from PurchaseModule state
 	const [purchasePOs, setPurchasePOs] = useState<string[]>([]);
 	useEffect(() => {
@@ -424,7 +442,6 @@ const VendorDeptModule: React.FC = () => {
 			}
 		}
 	}, [newOrder.materialPurchasePoNo, purchaseOrders, purchaseData]);
-
 
 	const [orders, setOrders] = useState<VendorDeptOrder[]>([]);
 	useEffect(() => {
@@ -1255,206 +1272,93 @@ useEffect(() => {
 		console.log('[VendorDeptModule] orders:', orders);
 	}, [newOrder, orders]);
 
-	// FIXED: Auto-add a Vendor Dept Order for every new PO in purchasePOs if not already present
-	// This function now ONLY reads from purchaseOrders state (loaded from Firestore)
+	// Auto-import: Create VendorDept orders from PurchaseOrders (Firebase only - NO localStorage)
 	React.useEffect(() => {
-		const purchaseEntries = Array.isArray(purchaseOrders) && purchaseOrders.length > 0 ? purchaseOrders : (Array.isArray(purchaseData) ? purchaseData : []);
-		
-		if (purchaseEntries.length === 0) {
-			console.debug('[VendorDeptModule][AutoImport] No purchase data available to auto-import');
-			return;
+		if (!userUid || !Array.isArray(purchaseOrders) || purchaseOrders.length === 0) {
+			return; // Wait for userUid and purchase data
 		}
-		
-		console.info('[VendorDeptModule][AutoImport] ⏳ Starting auto-import - Using Firestore data');
-		console.debug('[VendorDeptModule][AutoImport] purchaseOrders count:', purchaseOrders.length, 'purchaseData count:', purchaseData.length);
-		console.debug('[VendorDeptModule][AutoImport] Total entries to process:', purchaseEntries.length);
-		
-		// Group purchase entries by poNo (normalized to uppercase for consistent comparison)
+
+		// Group purchase entries by poNo
 		const poGroups: { [poNo: string]: any[] } = {};
-		purchaseEntries.forEach((entry: any) => {
+		purchaseOrders.forEach((entry: any) => {
 			if (!entry.poNo) return;
 			const normalizedPoNo = String(entry.poNo).trim().toUpperCase();
 			if (!poGroups[normalizedPoNo]) poGroups[normalizedPoNo] = [];
 			poGroups[normalizedPoNo].push(entry);
 		});
-		
-		console.debug('[VendorDeptModule][AutoImport] Grouped POs:', Object.keys(poGroups).join(', '));
-		
-		// For each PO, check if an order exists in Vendor Dept Orders
-		// CRITICAL: Check both in-memory state AND localStorage to prevent duplicates
-		// ALSO: Normalize PO numbers to uppercase for case-insensitive comparison
-		const existingPOs = new Set<string>(orders.map(order => String(order.materialPurchasePoNo).trim().toUpperCase()));
-		try {
-			const savedData = localStorage.getItem('vendorDeptData');
-			if (savedData) {
-				const savedOrders = JSON.parse(savedData);
-				if (Array.isArray(savedOrders)) {
-					savedOrders.forEach((order: any) => {
-						if (order.materialPurchasePoNo) {
-							const normalizedPoNo = String(order.materialPurchasePoNo).trim().toUpperCase();
-							existingPOs.add(normalizedPoNo);
-						}
-					});
+
+		// Check which POs already have orders (normalize for case-insensitive comparison)
+		const existingPOs = new Set<string>(
+			orders.map(order => String(order.materialPurchasePoNo).trim().toUpperCase())
+		);
+
+		// For each PO not yet imported, create a VendorDept order
+		Object.entries(poGroups).forEach(([normalizedPoNo, group]) => {
+			if (existingPOs.has(normalizedPoNo)) {
+				return; // Already exists
+			}
+
+			const first = group[0];
+			const poNo = first.poNo;
+
+			// Find matching PSIR and VSIR records from state (not localStorage)
+			let batchNo = '';
+			if (Array.isArray(psirData)) {
+				const matchingPSIR = psirData.find((p: any) => 
+					String(p.poNo).trim().toUpperCase() === normalizedPoNo
+				);
+				if (matchingPSIR?.batchNo) {
+					batchNo = matchingPSIR.batchNo;
 				}
 			}
-		} catch (err) {
-			console.error('[VendorDeptModule][AutoImport] Error reading vendorDeptData from localStorage:', err);
-		}
-		console.debug('[VendorDeptModule][AutoImport] existingPOs (normalized):', existingPOs);
-		
-		let added = false;
-		const newOrders = [...orders];
-		
-		purchasePOs.forEach(poNo => {
-			const normalizedPoNo = String(poNo).trim().toUpperCase();
-			if (!existingPOs.has(normalizedPoNo) && poGroups[normalizedPoNo]) {
-				const group = poGroups[normalizedPoNo];
-				console.debug('[VendorDeptModule][AutoImport] Importing group for PO:', poNo, '(normalized:', normalizedPoNo, ')', group);
-				
-				// Map purchase items to VendorDeptItem format, filling all available fields
-				const items = group.map((item: any) => {
-					let itemName = item.itemName || item.model || '';
-					let itemCode = item.itemCode || '';
-					
-					if ((!itemName || !itemCode) && window.localStorage) {
-						const itemMasterRaw = localStorage.getItem('itemMasterData');
-						if (itemMasterRaw) {
-							try {
-								const itemMaster = JSON.parse(itemMasterRaw);
-								if (Array.isArray(itemMaster)) {
-									if (itemCode) {
-										const found = itemMaster.find((im: any) => im.itemCode === itemCode);
-										if (found) itemName = found.itemName || itemName;
-									}
-									if (itemName && !itemCode) {
-										const found = itemMaster.find((im: any) => im.itemName === itemName);
-										if (found) itemCode = found.itemCode || itemCode;
-									}
-								}
-							} catch {}
-						}
-					}
-					
-					return {
-						itemName,
-						itemCode,
-						materialIssueNo: '',
-						qty: getPurchaseQty(poNo, itemCode, purchaseOrders, purchaseData) || item.qty || 0,
-						indentStatus: (function() {
-							const purchaseStatus = getIndentStatusFromPurchase(poNo, itemCode, item.indentNo || '', purchaseData, purchaseOrders);
-							if (purchaseStatus) return purchaseStatus && purchaseStatus.toUpperCase ? purchaseStatus.toUpperCase() : String(purchaseStatus);
-							return (item.indentStatus || '').toUpperCase();
-						})(),
-						// Do not auto-fill receivedQty on import; require manual entry
-						receivedQty: 0,
-						okQty: item.okQty || 0,
-						reworkQty: item.reworkQty || 0,
-						rejectedQty: item.rejectedQty || 0,
-						grnNo: item.grnNo || '',
-						debitNoteOrQtyReturned: item.debitNoteOrQtyReturned || '',
-						remarks: item.remarks || '',
-					};
+
+			let vendorBatchNo = '';
+			if (Array.isArray(vsirRecords)) {
+				const matchingVSIR = vsirRecords.find((v: any) => 
+					String(v.poNo).trim().toUpperCase() === normalizedPoNo
+				);
+				if (matchingVSIR?.vendorBatchNo) {
+					vendorBatchNo = matchingVSIR.vendorBatchNo;
+				}
+			}
+
+			// Map items for this order
+			const items = group.map((item: any) => ({
+				itemName: item.itemName || item.model || '',
+				itemCode: item.itemCode || '',
+				materialIssueNo: '',
+				qty: item.qty || 0,
+				indentStatus: (item.indentStatus || '').toUpperCase(),
+				receivedQty: 0,
+				okQty: item.okQty || 0,
+				reworkQty: item.reworkQty || 0,
+				rejectedQty: item.rejectedQty || 0,
+				grnNo: item.grnNo || '',
+				debitNoteOrQtyReturned: item.debitNoteOrQtyReturned || '',
+				remarks: item.remarks || '',
+			}));
+
+			// Create and save the order to Firebase
+			const newOrder: VendorDeptOrder = {
+				orderPlaceDate: first?.orderPlaceDate || '',
+				materialPurchasePoNo: poNo,
+				oaNo: first?.oaNo || '',
+				batchNo,
+				vendorBatchNo,
+				dcNo: '',
+				vendorName: '', // Requires manual entry
+				items,
+			};
+
+			addVendorDept(userUid, newOrder)
+				.then(() => {
+					console.debug('[VendorDeptModule][AutoImport] ✅ Order auto-imported to Firebase for PO:', poNo);
+				})
+				.catch((error) => {
+					console.error('[VendorDeptModule][AutoImport] ❌ Error saving order for PO', poNo, ':', error);
 				});
-				
-				// Use first entry for order-level fields
-				const first = group[0];
-				
-				// Fetch Batch No from PSIR for auto-imported orders (just like manual form)
-				let batchNoForAutoImport = first?.batchNo || '';
-// Fetch batchNo ONLY from PSIR - NO AUTO-GENERATION
-			if (!batchNoForAutoImport) {
-				try {
-					const psirDataRaw = localStorage.getItem('psirData');
-					if (psirDataRaw) {
-						const psirs = JSON.parse(psirDataRaw);
-						if (Array.isArray(psirs)) {
-							const matchingPSIR = psirs.find((p: any) => p.poNo === poNo);
-							if (matchingPSIR && matchingPSIR.batchNo) {
-								batchNoForAutoImport = matchingPSIR.batchNo;
-								console.debug('[VendorDeptModule][AutoImport] ✓ Found batchNo from PSIR for PO', poNo, ':', batchNoForAutoImport);
-							} else if (matchingPSIR) {
-								console.debug('[VendorDeptModule][AutoImport] ✗ PSIR record found but NO batchNo (invoice may not be entered yet)');
-							}
-						}
-					}
-				} catch (e) {
-					console.error('[VendorDeptModule][AutoImport] Error fetching batchNo from PSIR:', e);
-				}
-			}
-			
-			// NO AUTO-GENERATION - batchNo should only come from PSIR
-			if (!batchNoForAutoImport) {
-				console.debug('[VendorDeptModule][AutoImport] Batch No NOT populated - waiting for PSIR to generate it');
-			}
-			
-			// Fetch Vendor Batch No from VSIR
-			let vendorBatchNoForAutoImport = '';
-			try {
-				const vsirRaw = localStorage.getItem('vsri-records');
-				if (vsirRaw) {
-					const vsirRecords = JSON.parse(vsirRaw);
-					if (Array.isArray(vsirRecords)) {
-						const matchingVSIR = vsirRecords.find((v: any) => v.poNo === poNo);
-						if (matchingVSIR && matchingVSIR.vendorBatchNo) {
-							vendorBatchNoForAutoImport = matchingVSIR.vendorBatchNo;
-							console.debug('[VendorDeptModule][AutoImport] ✓ Found vendorBatchNo from VSIR for PO', poNo, ':', vendorBatchNoForAutoImport);
-						} else if (matchingVSIR) {
-							console.debug('[VendorDeptModule][AutoImport] ✗ VSIR record found but NO vendorBatchNo yet');
-						}
-					}
-				}
-			} catch (e) {
-				console.error('[VendorDeptModule][AutoImport] Error fetching vendorBatchNo from VSIR:', e);
-			}
-			
-			if (!vendorBatchNoForAutoImport) {
-				console.debug('[VendorDeptModule][AutoImport] Vendor Batch No NOT populated - will be fetched when manually entered in VSIR');
-			}
-				
-				newOrders.push({
-					orderPlaceDate: first?.orderPlaceDate || '',
-					materialPurchasePoNo: poNo,
-					oaNo: first?.oaNo || '',
-					batchNo: batchNoForAutoImport,
-					vendorBatchNo: vendorBatchNoForAutoImport,
-					dcNo: '',
-					vendorName: '', // MANUAL ENTRY - users must enter vendor name manually
-					items,
-				});
-				added = true;
-			}
 		});
-		
-		if (added) {
-			console.debug('[VendorDeptModule][AutoImport] Imported new orders:', newOrders);
-			setOrders(newOrders);
-			// CRITICAL: Also reload and merge from localStorage to prevent overwriting recent updates
-			try {
-				const current = localStorage.getItem('vendorDeptData');
-				if (current) {
-					const currentOrders = JSON.parse(current);
-					// Merge: keep all current orders and add only the new ones that don't conflict
-					// Use normalized (uppercase) PO numbers for case-insensitive comparison
-					const merged = [...currentOrders];
-					newOrders.forEach((newOrder: any) => {
-						// Check if this PO already exists in current (case-insensitive)
-						const newOrderPoNormalized = String(newOrder.materialPurchasePoNo).trim().toUpperCase();
-						const exists = merged.some(o => String(o.materialPurchasePoNo).trim().toUpperCase() === newOrderPoNormalized);
-						if (!exists) {
-							merged.push(newOrder);
-						}
-					});
-					localStorage.setItem('vendorDeptData', JSON.stringify(merged));
-					console.debug('[VendorDeptModule][AutoImport] Merged with existing orders in localStorage');
-				} else {
-					localStorage.setItem('vendorDeptData', JSON.stringify(newOrders));
-				}
-			} catch (err) {
-				console.error('[VendorDeptModule][AutoImport] Error merging with localStorage:', err);
-				localStorage.setItem('vendorDeptData', JSON.stringify(newOrders));
-			}
-		}
-	}, [purchaseOrders]);
+	}, [purchaseOrders, psirData, vsirRecords, orders, userUid]);
 
 	// Regenerate vendor batch nos for existing orders that don't have them
 	const regenerateVendorBatchNos = () => {
