@@ -237,6 +237,32 @@ const PurchaseModule: React.FC<PurchaseModuleProps> = ({ user }) => {
     return `${normalizeField(indentNo)}|${normalizeField(itemCode)}`;
   };
 
+  // 🎯 NEW: Deduplicate entries by indentNo + itemCode (keep first occurrence)
+  const deduplicateEntries = (entries: PurchaseEntry[]): PurchaseEntry[] => {
+    if (!Array.isArray(entries)) return [];
+    
+    const seen = new Set<string>();
+    const deduplicated: PurchaseEntry[] = [];
+    let duplicateCount = 0;
+
+    for (const entry of entries) {
+      const key = makeKey(entry.indentNo, entry.itemCode);
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduplicated.push(entry);
+      } else {
+        duplicateCount++;
+        console.warn(`[PurchaseModule] ⚠️ Duplicate found and removed: ${key} (keeping first, removing this one)`);
+      }
+    }
+
+    if (duplicateCount > 0) {
+      console.log(`[PurchaseModule] Deduplication complete: removed ${duplicateCount} duplicate(s), keeping ${deduplicated.length} unique records`);
+    }
+
+    return deduplicated;
+  };
+
   // 🎯 ENHANCED: Get live stock for a purchase entry - EXACT MATCH TO INDENT MODULE
   const getLiveStockForEntry = (entry: PurchaseEntry): number => {
     try {
@@ -784,17 +810,19 @@ const PurchaseModule: React.FC<PurchaseModuleProps> = ({ user }) => {
 
   // Save function
   const saveEntries = (data: PurchaseEntry[]): PurchaseEntry[] => {
-    console.log('[PurchaseModule] Saving data:', data);
-    replaceFirestoreCollection(uid, 'purchaseData', data).catch(err => console.error(err));
-    replaceFirestoreCollection(uid, 'purchaseOrders', data).catch(err => console.error(err));
+    console.log('[PurchaseModule] Saving data:', data.length, 'entries');
+    // Always deduplicate before saving to prevent duplicates from reaching Firestore
+    const dedupedData = deduplicateEntries(data);
+    replaceFirestoreCollection(uid, 'purchaseData', dedupedData).catch(err => console.error(err));
+    replaceFirestoreCollection(uid, 'purchaseOrders', dedupedData).catch(err => console.error(err));
     
     try {
-      bus.dispatchEvent(new CustomEvent('purchaseOrders.updated', { detail: data }));
+      bus.dispatchEvent(new CustomEvent('purchaseOrders.updated', { detail: dedupedData }));
     } catch (err) {
       console.error('[PurchaseModule] Error dispatching event:', err);
     }
 
-    return data;
+    return dedupedData;
   };
 
   // Manual import function - SYNC STATUS AND STOCK FROM INDENT MODULE
@@ -880,10 +908,11 @@ const PurchaseModule: React.FC<PurchaseModuleProps> = ({ user }) => {
       });
 
       const finalEntries = saveEntries(updatedEntries);
-      setEntries(finalEntries);
+      const dedupedEntries = deduplicateEntries(finalEntries);
+      setEntries(dedupedEntries);
       setLastImport(Date.now());
 
-      alert(`✅ Import completed: Updated ${updatedCount}, Created ${createdCount}. Status and Stock synced from indent module.`);
+      alert(`✅ Import completed: Updated ${updatedCount}, Created ${createdCount}. Duplicates removed. Status and Stock synced from indent module.`);
     } catch (error) {
       console.error('[PurchaseModule] Import error:', error);
       alert('❌ Error during import');
@@ -907,7 +936,8 @@ const PurchaseModule: React.FC<PurchaseModuleProps> = ({ user }) => {
             receivedQty: entry.receivedQty ?? 0,
             rejectedQty: entry.rejectedQty ?? 0,
           }));
-          setEntries(migratedData);
+          const dedupedData = deduplicateEntries(migratedData);
+          setEntries(dedupedData);
         } catch (error) {
           console.error('[PurchaseModule] Error processing purchaseData:', error);
           setEntries([]);
