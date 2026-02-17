@@ -81,7 +81,7 @@ const PSIRModule: React.FC = () => {
   const [deleteDebugInfo, setDeleteDebugInfo] = useState<string>('');
 
   const [userUid, setUserUid] = useState<string | null>(null);
-  const [lastAutoImportTime, setLastAutoImportTime] = useState<number>(0);
+  const initialImportDone = useRef<boolean>(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -543,47 +543,30 @@ const PSIRModule: React.FC = () => {
   };
 
   useEffect(() => {
-    // Use purchaseOrders if available, fallback to purchaseData
-    const ordersToCheck = purchaseOrders.length > 0 ? purchaseOrders : purchaseData;
-    const poCount = ordersToCheck.length;
-    const processedCount = processedPOs.size;
-    const unprocessedCount = poCount - processedCount;
-    
-    console.debug('[PSIRModule] Auto-import check:', { 
-      purchaseOrdersCount: purchaseOrders.length,
-      purchaseDataCount: purchaseData.length,
-      ordersToCheckCount: poCount,
-      processedPOsCount: processedCount,
-      unprocessedCount: unprocessedCount,
-      deletedPOsCount: deletedPOKeys.size,
-      psirsCount: psirs.length 
-    });
-    
-    // Prevent repeated imports with a cooldown (2 seconds)
-    const now = Date.now();
-    const timeSinceLastImport = now - lastAutoImportTime;
-    if (timeSinceLastImport < 2000) {
-      console.debug('[PSIRModule] Auto-import cooldown active - skipping (last import was', timeSinceLastImport, 'ms ago)');
+    // ONLY trigger auto-import once when we have both user AND data
+    if (!userUid) {
+      console.debug('[PSIRModule] Auto-import: Waiting for userUid');
+      initialImportDone.current = false; // Reset if user changes
       return;
     }
-    
-    const hasUnprocessedNonDeleted = Array.from(ordersToCheck).some(order => {
-      const poNo = String(order.poNo || '').trim();
-      const indentNo = String(order.indentNo || '').trim();
-      const key = poNo ? poNo : `INDENT::${indentNo}`;
-      return !processedPOs.has(key) && !deletedPOKeys.has(key);
-    });
-    
-    if (hasUnprocessedNonDeleted) {
-      console.info('[PSIRModule] Auto-import triggered - importing unprocessed non-deleted purchase orders');
-      setLastAutoImportTime(now);
-      importAllPurchaseOrdersToPSIR();
-    } else if (poCount > 0 && processedPOs.size === 0 && deletedPOKeys.size === 0) {
-      console.info('[PSIRModule] Auto-import triggered on first load - importing', poCount, 'records from purchase orders/data');
-      setLastAutoImportTime(now);
-      importAllPurchaseOrdersToPSIR();
+
+    if (initialImportDone.current) {
+      console.debug('[PSIRModule] Auto-import: Already done initial import');
+      return;
     }
-  }, [purchaseOrders, purchaseData, processedPOs, deletedPOKeys, lastAutoImportTime]);
+
+    const ordersToCheck = purchaseOrders.length > 0 ? purchaseOrders : purchaseData;
+    const poCount = ordersToCheck.length;
+    
+    if (poCount === 0) {
+      console.debug('[PSIRModule] Auto-import: No purchase orders or data available yet');
+      return; // Wait for data to load
+    }
+
+    console.info('[PSIRModule] Auto-import: Initializing - importing', poCount, 'records');
+    initialImportDone.current = true;
+    importAllPurchaseOrdersToPSIR();
+  }, [userUid, purchaseOrders.length, purchaseData.length]);
 
   // NEW: Clean up orphaned PSIR records when their source Purchase Order is deleted
   useEffect(() => {
