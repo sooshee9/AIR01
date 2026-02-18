@@ -125,16 +125,23 @@ const VSIRModule: React.FC = () => {
   // Auto-delete all VSIR records if purchaseData is empty
   useEffect(() => {
     if (userUid && purchaseData.length === 0 && records.length > 0) {
+      console.log('[VSIR][DEBUG] Triggering auto-delete: userUid=', userUid, 'purchaseData.length=', purchaseData.length, 'records.length=', records.length);
+      alert('[VSIR][DEBUG] Attempting to auto-delete all VSIR records because purchaseData is empty. See console for details.');
       (async () => {
         for (const rec of records) {
           try {
+            console.log('[VSIR][DEBUG] Attempting to delete VSIR record:', rec);
             await deleteVSIRRecord(userUid, String(rec.id));
-            console.log('[VSIR] Auto-deleted VSIR record due to no purchase data:', rec.id);
+            console.log('[VSIR][DEBUG] Successfully auto-deleted VSIR record:', rec.id);
+            alert('[VSIR][DEBUG] Successfully auto-deleted VSIR record: ' + rec.id);
           } catch (e) {
-            console.error('[VSIR] Failed to auto-delete VSIR record:', rec.id, e);
+            console.error('[VSIR][DEBUG] Failed to auto-delete VSIR record:', rec.id, e);
+            alert('[VSIR][DEBUG] Failed to auto-delete VSIR record: ' + rec.id + '\nError: ' + (e && e.message ? e.message : e));
           }
         }
       })();
+    } else {
+      console.log('[VSIR][DEBUG] Auto-delete not triggered. userUid:', userUid, 'purchaseData.length:', purchaseData.length, 'records.length:', records.length);
     }
   }, [userUid, purchaseData, records]);
 
