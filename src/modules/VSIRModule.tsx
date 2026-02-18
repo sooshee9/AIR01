@@ -117,9 +117,26 @@ const VSIRModule: React.FC = () => {
           console.log('[VSIR] ✅ Purchase data subscription updated:', docs.length, 'records');
           if (docs.length > 0) {
             console.log('[VSIR] First purchase data entry:', docs[0]);
+            setPurchaseData(docs || []);
+          } else {
+            setPurchaseData([]);
           }
-          setPurchaseData(docs || []);
         });
+  // Auto-delete all VSIR records if purchaseData is empty
+  useEffect(() => {
+    if (userUid && purchaseData.length === 0 && records.length > 0) {
+      (async () => {
+        for (const rec of records) {
+          try {
+            await deleteVSIRRecord(userUid, String(rec.id));
+            console.log('[VSIR] Auto-deleted VSIR record due to no purchase data:', rec.id);
+          } catch (e) {
+            console.error('[VSIR] Failed to auto-delete VSIR record:', rec.id, e);
+          }
+        }
+      })();
+    }
+  }, [userUid, purchaseData, records]);
 
         // subscribe to purchaseOrders in real-time (alternative source)
         const unsubPurchaseOrders = subscribePurchaseOrders(uid, (docs) => {
@@ -681,10 +698,13 @@ const VSIRModule: React.FC = () => {
     }
 
     // Check for existing record with same poNo and itemCode to prevent duplicates
-    const existingIdx = records.findIndex(r => 
-      String(r.poNo).trim().toLowerCase() === String(finalItemInput.poNo).trim().toLowerCase() && 
-      String(r.itemCode).trim().toLowerCase() === String(finalItemInput.itemCode).trim().toLowerCase()
-    );
+    console.log('[VSIR] Current records:', records.map(r => ({ poNo: r.poNo, itemCode: r.itemCode })));
+    const existingIdx = records.findIndex(r => {
+      const match = String(r.poNo).trim().toLowerCase() === String(finalItemInput.poNo).trim().toLowerCase() && 
+        String(r.itemCode).trim().toLowerCase() === String(finalItemInput.itemCode).trim().toLowerCase();
+      console.log(`[VSIR] Comparing: "${String(r.poNo).trim().toLowerCase()}" === "${String(finalItemInput.poNo).trim().toLowerCase()}" && "${String(r.itemCode).trim().toLowerCase()}" === "${String(finalItemInput.itemCode).trim().toLowerCase()}" ? ${match}`);
+      return match;
+    });
     console.log('[VSIR] Checking for duplicate: poNo=', finalItemInput.poNo, 'itemCode=', finalItemInput.itemCode, 'existingIdx=', existingIdx);
 
     if (existingIdx !== -1) {
@@ -988,6 +1008,7 @@ const VSIRModule: React.FC = () => {
                           })
                           .catch((e) => {
                             console.error('[VSIR] deleteVSIRRecord failed:', e, 'Record ID:', toDelete.id);
+                            alert('Failed to delete record from Firestore. Please check your permissions and network.\nError: ' + (e && e.message ? e.message : e));
                           });
                       } else {
                         // No userUid, just remove from state
