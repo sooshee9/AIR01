@@ -404,6 +404,8 @@ export const hardResetAllData = async (uid: string) => {
       'inHouseIssues'
     ];
     
+    const deletionResults: Record<string, number> = {};
+    
     // Delete all docs from each collection under users/{uid}
     for (const collectionName of collectionsToDelete) {
       try {
@@ -561,6 +563,8 @@ export const forceCleanupAllData = async (uid: string) => {
       'stock',
       'inHouseIssues'
     ];
+    
+    const forceCleanupResults: Record<string, number> = {};
     
     // Force delete all docs with batch operations
     for (const collectionName of collectionsToDelete) {
