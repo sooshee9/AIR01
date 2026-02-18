@@ -136,7 +136,8 @@ const VSIRModule: React.FC = () => {
             alert('[VSIR][DEBUG] Successfully auto-deleted VSIR record: ' + rec.id);
           } catch (e) {
             console.error('[VSIR][DEBUG] Failed to auto-delete VSIR record:', rec.id, e);
-            alert('[VSIR][DEBUG] Failed to auto-delete VSIR record: ' + rec.id + '\nError: ' + (e && e.message ? e.message : e));
+            const errMsg = (e && typeof e === 'object' && 'message' in e) ? (e as any).message : String(e);
+            alert('[VSIR][DEBUG] Failed to auto-delete VSIR record: ' + rec.id + '\nError: ' + errMsg);
           }
         }
       })();
