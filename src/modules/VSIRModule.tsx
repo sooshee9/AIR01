@@ -348,14 +348,15 @@ const VSIRModule: React.FC = () => {
     console.log('[VSIR] Source data entries:', sourceData.length);
 
     try {
-      const existingPOs = new Set(records.map(r => String(r.poNo).trim()));
+      // Dedup: check both PO No and item code to prevent exact duplicates
+      const existingRecords = new Set(records.map(r => `${String(r.poNo).trim()}|${String(r.itemCode).trim()}`));
       let importCount = 0;
 
       for (let orderIdx = 0; orderIdx < sourceData.length; orderIdx++) {
         const order: any = sourceData[orderIdx];
         const poNo = getOrderPoNo(order);
         console.log(`[VSIR] Processing order ${orderIdx}: poNo=${poNo}`);
-        if (!poNo || existingPOs.has(String(poNo).trim())) { console.log('[VSIR]  skipping existing or invalid PO:', poNo); continue; }
+        if (!poNo) { console.log('[VSIR]  skipping: no PO number'); continue; }
 
         const items = getOrderItems(order);
         if (!Array.isArray(items) || items.length === 0) { console.log('[VSIR]  skipping: no items (checked multiple keys)'); continue; }
@@ -366,6 +367,15 @@ const VSIRModule: React.FC = () => {
 
         for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
           const item = items[itemIdx];
+          const itemCode = item.itemCode || '';
+          const dedupeKey = `${String(poNo).trim()}|${String(itemCode).trim()}`;
+          
+          // Skip if this PO+Item combination already exists
+          if (existingRecords.has(dedupeKey)) {
+            console.log(`[VSIR]  skipping duplicate: ${dedupeKey}`);
+            continue;
+          }
+          
           const newRecord: VSRIRecord = {
             id: Date.now() + Math.floor(Math.random() * 10000),
             receivedDate: '',
@@ -378,7 +388,7 @@ const VSIRModule: React.FC = () => {
             invoiceDcNo: '',
             vendorName: '',
             itemName: item.itemName || item.model || '',
-            itemCode: item.itemCode || '',
+            itemCode: itemCode,
             qtyReceived: item.qty || 0,
             okQty: 0,
             reworkQty: 0,
@@ -390,9 +400,9 @@ const VSIRModule: React.FC = () => {
           try {
             await addVSIRRecord(userUid, newRecord);
             importCount++;
-            console.log('[VSIR]   ✅ imported', poNo, newRecord.itemCode || newRecord.itemName);
+            console.log('[VSIR]   ✅ imported', dedupeKey);
           } catch (err) {
-            console.error('[VSIR]   ❌ failed to import', poNo, err);
+            console.error('[VSIR]   ❌ failed to import', dedupeKey, err);
           }
         }
       }
@@ -406,7 +416,7 @@ const VSIRModule: React.FC = () => {
   // Automatic run when data or auth changes
   useEffect(() => {
     runImport();
-  }, [purchaseOrders, purchaseData, vendorDeptOrders, records, userUid]);
+  }, [purchaseOrders, purchaseData, vendorDeptOrders, userUid]);
 
   // Fill missing OA/Batch from PSIR/VendorDept (once)
   useEffect(() => {
