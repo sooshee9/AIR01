@@ -10,11 +10,11 @@ interface VendorDeptItem {
 	itemName: string;
 	itemCode: string;
 	materialIssueNo: string;
-	qty: number;
+	qty: number | undefined;
 	closingStock?: number | string;
 	indentStatus: string;
 	receivedQty: number;
-	okQty: number;
+	okQty: number | undefined;
 	reworkQty: number;
 	rejectedQty: number;
 	grnNo: string;
@@ -509,11 +509,11 @@ const VendorDeptModule: React.FC = () => {
 		itemName: '',
 		itemCode: '',
 		materialIssueNo: '',
-		qty: 0,
+		qty: undefined,
 		closingStock: '',
 		indentStatus: '',
 		receivedQty: 0,
-		okQty: 0,
+		okQty: undefined,
 		reworkQty: 0,
 		rejectedQty: 0,
 		grnNo: '',
@@ -1019,10 +1019,10 @@ useEffect(() => {
 	}, []);
 
 	const handleAddItem = () => {
-		if (!itemInput.itemName || !itemInput.itemCode || !itemInput.materialIssueNo || itemInput.qty <= 0) return;
+		if (!itemInput.itemName || !itemInput.itemCode || !itemInput.materialIssueNo || !itemInput.qty || itemInput.qty <= 0) return;
 		const itemWithStock = { ...itemInput, closingStock: getClosingStock(itemInput.itemCode, itemInput.itemName) };
 		setNewOrder({ ...newOrder, items: [...newOrder.items, itemWithStock] });
-		setItemInput({ itemName: '', itemCode: '', materialIssueNo: '', qty: 0, closingStock: '', indentStatus: '', receivedQty: 0, okQty: 0, reworkQty: 0, rejectedQty: 0, grnNo: '', debitNoteOrQtyReturned: '', remarks: '' });
+		setItemInput({ itemName: '', itemCode: '', materialIssueNo: '', qty: undefined, closingStock: '', indentStatus: '', receivedQty: 0, okQty: undefined, reworkQty: 0, rejectedQty: 0, grnNo: '', debitNoteOrQtyReturned: '', remarks: '' });
 	};
 
 	const handleDeleteOrder = (idx: number) => {
@@ -1263,7 +1263,7 @@ useEffect(() => {
 						items: prev.items.map((item, iIdx) => iIdx === editIdx.itemIdx ? { ...itemInput, closingStock: getClosingStock(itemInput.itemCode, itemInput.itemName) } : item)
 					}));
 					setEditIdx(null);
-					setItemInput({ itemName: '', itemCode: '', materialIssueNo: '', qty: 0, closingStock: '', indentStatus: '', receivedQty: 0, okQty: 0, reworkQty: 0, rejectedQty: 0, grnNo: '', debitNoteOrQtyReturned: '', remarks: '' });
+					setItemInput({ itemName: '', itemCode: '', materialIssueNo: '', qty: undefined, closingStock: '', indentStatus: '', receivedQty: 0, okQty: undefined, reworkQty: 0, rejectedQty: 0, grnNo: '', debitNoteOrQtyReturned: '', remarks: '' });
 				} else {
 					handleAddItem();
 				}
@@ -1665,7 +1665,7 @@ const handleVSIRUpdate = (event?: any) => {
 			vendorName: '', // Always default to empty string
 			items: [],
 		});
-		setItemInput({ itemName: '', itemCode: '', materialIssueNo: '', qty: 0, closingStock: '', indentStatus: '', receivedQty: 0, okQty: 0, reworkQty: 0, rejectedQty: 0, grnNo: '', debitNoteOrQtyReturned: '', remarks: '' });
+		setItemInput({ itemName: '', itemCode: '', materialIssueNo: '', qty: undefined, closingStock: '', indentStatus: '', receivedQty: 0, okQty: undefined, reworkQty: 0, rejectedQty: 0, grnNo: '', debitNoteOrQtyReturned: '', remarks: '' });
 	};
 
 	// Build a human-friendly debug report indicating where values come from
@@ -2180,7 +2180,7 @@ const handleVSIRUpdate = (event?: any) => {
 										<td style={{ display: 'flex', gap: 4 }}>
 											<button
 												onClick={() => {
-													const editedQty = item.qty < 0 ? undefined : item.qty;
+													const editedQty = (item.qty && item.qty < 0) ? undefined : item.qty;
 													setItemInput({ ...item, okQty: undefined, qty: editedQty });
 													setEditIdx({ orderIdx: 0, itemIdx });
 												}}
