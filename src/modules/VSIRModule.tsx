@@ -88,18 +88,14 @@ const VSIRModule: React.FC = () => {
   // Helper: create a composite key for deduplication
   const makeKey = (poNo: string, itemCode: string) => `${String(poNo).trim().toLowerCase()}|${String(itemCode).trim().toLowerCase()}`;
 
-  // Helper: deduplicate VSIR records by poNo+itemCode (keep first occurrence)
+  // Helper: deduplicate VSIR records by poNo+itemCode (keep latest occurrence)
   const deduplicateVSIRRecords = (arr: VSRIRecord[]): VSRIRecord[] => {
-    const seen = new Set<string>();
-    const deduped: VSRIRecord[] = [];
+    const map = new Map<string, VSRIRecord>();
     for (const rec of arr) {
       const key = makeKey(rec.poNo, rec.itemCode);
-      if (!seen.has(key)) {
-        seen.add(key);
-        deduped.push(rec);
-      }
+      map.set(key, rec); // always keep the latest occurrence
     }
-    return deduped;
+    return Array.from(map.values());
   };
 
   // Initialize component - set isInitialized to true on mount
@@ -118,13 +114,9 @@ const VSIRModule: React.FC = () => {
         const unsubVSIR = subscribeVSIRRecords(uid, (docs) => {
           try {
             const dedupedDocs = deduplicateVSIRRecords(docs.map(d => ({ ...d })) as VSRIRecord[]);
-            // Only update if records actually changed
-            const hasChanged = dedupedDocs.length !== prevRecordsRef.current.length ||
-              !dedupedDocs.every((r, i) => r.id === prevRecordsRef.current[i]?.id);
-            if (hasChanged) {
-              prevRecordsRef.current = dedupedDocs;
-              setRecords(dedupedDocs);
-            }
+            // Always update records to ensure latest values are held
+            prevRecordsRef.current = dedupedDocs;
+            setRecords(dedupedDocs);
           } catch (e) { console.error('[VSIR] Error mapping vsir docs', e); }
         });
 
