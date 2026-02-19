@@ -602,7 +602,14 @@ const VendorDeptModule: React.FC = () => {
 					closingStock: getClosingStock(item.itemCode, item.itemName),
 					indentStatus: '',
 					receivedQty: 0,
-				okQty: undefined,
+					okQty: undefined,
+					reworkQty: 0,
+					rejectedQty: 0,
+					grnNo: item.grnNo || '',
+					debitNoteOrQtyReturned: '',
+					remarks: '',
+				}));
+				
 				setNewOrder(prev => ({ ...prev, items: psirItems }));
 				console.log('[VendorDeptModule][AutoPopulate] Populated items from PSIR');
 			}
@@ -1371,7 +1378,14 @@ useEffect(() => {
 				qty: item.qty || 0,
 				indentStatus: (item.indentStatus || '').toUpperCase(),
 				receivedQty: 0,
-			okQty: undefined,
+				   okQty: undefined,
+				reworkQty: item.reworkQty || 0,
+				rejectedQty: item.rejectedQty || 0,
+				grnNo: item.grnNo || '',
+				debitNoteOrQtyReturned: item.debitNoteOrQtyReturned || '',
+				remarks: item.remarks || '',
+			}));
+
 			// Create and save the order to Firebase
 			const newOrder: VendorDeptOrder = {
 				orderPlaceDate: first?.orderPlaceDate || '',
