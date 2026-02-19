@@ -453,13 +453,6 @@ const PSIRModule: React.FC = () => {
           }
         }
 
-        // Skip if PO quantity is 0
-        const totalPoQty = (itemsFromPO || []).reduce((sum: number, item: any) => sum + (item.poQty || 0), 0);
-        if (totalPoQty === 0) {
-          console.debug(`[PSIRModule] Skipping order ${orderIdx} - Total PO quantity is 0`);
-          return;
-        }
-
         if (existingIdx !== -1) {
           const existing = psirs[existingIdx];
           let updated = false;
@@ -626,10 +619,6 @@ const PSIRModule: React.FC = () => {
     const rej = Number(itemInput.rejectQty) || 0;
     if (qtyToUse <= 0) {
       qtyToUse = ok + rej;
-    }
-    if (qtyToUse <= 0) {
-      alert('PO must be greater than 0 (either provided or sum of OK+Reject)');
-      return;
     }
     if (qtyToUse !== (ok + rej)) {
       alert('PO must equal OK Qty + Reject Qty');
