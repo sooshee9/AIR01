@@ -197,8 +197,7 @@ const VendorIssueModule: React.FC = () => {
     try {
       unsubIssues = subscribeVendorIssues(userUid, (docs) => {
         const mapped = docs.map(d => ({ ...d, items: Array.isArray(d.items) ? d.items : [] }));
-        const deduped = deduplicateVendorIssues(mapped as VendorIssue[]);
-        setIssues(deduped);
+        setIssues(mapped as VendorIssue[]);
       });
     } catch (err) { console.error('[VendorIssueModule] subscribeVendorIssues failed:', err); }
 
