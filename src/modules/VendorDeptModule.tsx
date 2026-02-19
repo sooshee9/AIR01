@@ -10,11 +10,11 @@ interface VendorDeptItem {
 	itemName: string;
 	itemCode: string;
 	materialIssueNo: string;
-	qty: number | undefined;
+	qty: number;
 	closingStock?: number | string;
 	indentStatus: string;
 	receivedQty: number;
-	okQty: number | undefined;
+	okQty: number;
 	reworkQty: number;
 	rejectedQty: number;
 	grnNo: string;
@@ -333,23 +333,7 @@ const VendorDeptModule: React.FC = () => {
 		console.debug('[VendorDeptModule] Setting up vendorDepts subscription for userId:', userUid);
 		unsub = subscribeVendorDepts(userUid, (docs) => {
 			console.info('[VendorDeptModule] ✓ Loaded', docs.length, 'vendor dept orders from Firebase');
-			// Sanitize items on load: clear okQty and normalize negative qty
-			const sanitized = docs.map((order: any) => {
-				if (!Array.isArray(order.items)) return order;
-				return {
-					...order,
-					items: order.items.map((it: any) => {
-						const qtyNum = Number(it.qty);
-						return {
-							...it,
-							okQty: undefined, // never display okQty in form
-							qty: (Number.isFinite(qtyNum) && qtyNum < 0) ? undefined : it.qty
-						};
-					})
-				};
-			});
-			console.debug('[VendorDeptModule] Sanitized orders - cleared okQty and negative qty');
-			setOrders(sanitized);
+			setOrders(docs);
 		});
 		return () => {
 			if (unsub) unsub();
@@ -525,11 +509,11 @@ const VendorDeptModule: React.FC = () => {
 		itemName: '',
 		itemCode: '',
 		materialIssueNo: '',
-		qty: undefined,
+		qty: 0,
 		closingStock: '',
 		indentStatus: '',
 		receivedQty: 0,
-		okQty: undefined,
+		okQty: 0,
 		reworkQty: 0,
 		rejectedQty: 0,
 		grnNo: '',
@@ -602,7 +586,7 @@ const VendorDeptModule: React.FC = () => {
 					closingStock: getClosingStock(item.itemCode, item.itemName),
 					indentStatus: '',
 					receivedQty: 0,
-					okQty: undefined,
+					okQty: 0,
 					reworkQty: 0,
 					rejectedQty: 0,
 					grnNo: item.grnNo || '',
@@ -979,14 +963,11 @@ useEffect(() => {
 						console.log('[VendorDeptModule][AutoFill] PSIR match:', match);
 						if (match) {
 							// Do NOT auto-fill receivedQty from PSIR -- keep Received Qty manual
-							const purchaseQty = getPurchaseQty(newOrder.materialPurchasePoNo, match.itemCode, purchaseOrders, purchaseData);
-							// Sanitize: ignore negative qty, fall back to undefined
-							const safeQty = (purchaseQty !== undefined && purchaseQty < 0) ? undefined : (purchaseQty || match.qtyReceived);
 							setItemInput(prev => ({
 								...prev,
-								qty: safeQty || prev.qty,
+								qty: getPurchaseQty(newOrder.materialPurchasePoNo, match.itemCode, purchaseOrders, purchaseData) || match.qtyReceived || prev.qty,
 								indentStatus: (function(){ const p = getIndentStatusFromPurchase(newOrder.materialPurchasePoNo, match.itemCode || prev.itemCode, match.indentNo || psir.indentNo || prev.materialIssueNo || '', purchaseData, purchaseOrders); if (p) return p && p.toUpperCase ? p.toUpperCase() : String(p); return (prev.indentStatus || '').toUpperCase(); })(),
-								okQty: undefined, // never auto-fill okQty
+								okQty: match.okQty || 0,
 								reworkQty: prev.reworkQty, // PSIR may not have reworkQty
 								rejectedQty: match.rejectQty || 0,
 								grnNo: match.grnNo || psir.grnNo || '',
@@ -1013,16 +994,12 @@ useEffect(() => {
 					const match = po.items.find((it: any) => norm(it.itemCode || it.Code) === targetCode);
 					console.log('[VendorDeptModule][AutoFill] Purchase item match (normalized):', match);
 					if (match) {
-						const purchaseQty = getPurchaseQty(newOrder.materialPurchasePoNo, match.itemCode, purchaseOrders, purchaseData);
-						// Sanitize: ignore negative qty, fall back to match fields
-						const safeQty = (purchaseQty !== undefined && purchaseQty < 0) ? undefined : (purchaseQty || Number(match.purchaseQty ?? match.receivedQty ?? match.qty ?? 0));
-						// Only use safeQty if it's positive
-						const finalQty = (safeQty !== undefined && safeQty > 0) ? safeQty : undefined;
+						const inferredQty = getPurchaseQty(newOrder.materialPurchasePoNo, match.itemCode, purchaseOrders, purchaseData) || Number(match.purchaseQty ?? match.receivedQty ?? match.qty ?? 0);
 						// Do NOT auto-fill receivedQty here — it must be entered manually
 						setItemInput(prev => ({
 							...prev,
-							qty: finalQty || prev.qty,
-							okQty: undefined, // never auto-fill okQty
+							qty: inferredQty,
+							okQty: match.okQty || 0,
 							reworkQty: match.reworkQty || 0,
 							rejectedQty: match.rejectedQty || 0,
 							grnNo: match.grnNo || '',
@@ -1042,10 +1019,10 @@ useEffect(() => {
 	}, []);
 
 	const handleAddItem = () => {
-		if (!itemInput.itemName || !itemInput.itemCode || !itemInput.materialIssueNo || !itemInput.qty || itemInput.qty <= 0) return;
+		if (!itemInput.itemName || !itemInput.itemCode || !itemInput.materialIssueNo || itemInput.qty <= 0) return;
 		const itemWithStock = { ...itemInput, closingStock: getClosingStock(itemInput.itemCode, itemInput.itemName) };
 		setNewOrder({ ...newOrder, items: [...newOrder.items, itemWithStock] });
-		setItemInput({ itemName: '', itemCode: '', materialIssueNo: '', qty: undefined, closingStock: '', indentStatus: '', receivedQty: 0, okQty: undefined, reworkQty: 0, rejectedQty: 0, grnNo: '', debitNoteOrQtyReturned: '', remarks: '' });
+		setItemInput({ itemName: '', itemCode: '', materialIssueNo: '', qty: 0, closingStock: '', indentStatus: '', receivedQty: 0, okQty: 0, reworkQty: 0, rejectedQty: 0, grnNo: '', debitNoteOrQtyReturned: '', remarks: '' });
 	};
 
 	const handleDeleteOrder = (idx: number) => {
@@ -1240,22 +1217,23 @@ useEffect(() => {
 					}
 				}
 				
-				// Sanitize items: do not prefill OK Qty in the edit form and avoid negative qty values
-				try {
-					orderToEdit.items = (orderToEdit.items || []).map((it: any) => {
-						const qtyNum = Number(it.qty);
-						return {
-							...it,
-							// Clear OK qty so the edit form doesn't prefill it
-							okQty: undefined,
-							// If qty is a negative number (string or number), don't prefill it in the edit form
-							qty: (Number.isFinite(qtyNum) && qtyNum < 0) ? undefined : it.qty
-						};
-					});
-				} catch (e) {
-					console.debug('[VendorDeptModule] Failed to sanitize items on edit load', e);
-				}
 				setNewOrder(orderToEdit);
+				// Reset itemInput when editing order - don't prefill okQty and qty fields
+				setItemInput({
+					itemName: '',
+					itemCode: '',
+					materialIssueNo: '',
+					qty: 0,
+					closingStock: '',
+					indentStatus: '',
+					receivedQty: 0,
+					okQty: 0,
+					reworkQty: 0,
+					rejectedQty: 0,
+					grnNo: '',
+					debitNoteOrQtyReturned: '',
+					remarks: '',
+				});
 				setEditOrderIdx(idx);
 			};
 	const handleUpdateOrder = () => {
@@ -1301,7 +1279,7 @@ useEffect(() => {
 						items: prev.items.map((item, iIdx) => iIdx === editIdx.itemIdx ? { ...itemInput, closingStock: getClosingStock(itemInput.itemCode, itemInput.itemName) } : item)
 					}));
 					setEditIdx(null);
-					setItemInput({ itemName: '', itemCode: '', materialIssueNo: '', qty: undefined, closingStock: '', indentStatus: '', receivedQty: 0, okQty: undefined, reworkQty: 0, rejectedQty: 0, grnNo: '', debitNoteOrQtyReturned: '', remarks: '' });
+					setItemInput({ itemName: '', itemCode: '', materialIssueNo: '', qty: 0, closingStock: '', indentStatus: '', receivedQty: 0, okQty: 0, reworkQty: 0, rejectedQty: 0, grnNo: '', debitNoteOrQtyReturned: '', remarks: '' });
 				} else {
 					handleAddItem();
 				}
@@ -1378,7 +1356,7 @@ useEffect(() => {
 				qty: item.qty || 0,
 				indentStatus: (item.indentStatus || '').toUpperCase(),
 				receivedQty: 0,
-				   okQty: undefined,
+				okQty: item.okQty || 0,
 				reworkQty: item.reworkQty || 0,
 				rejectedQty: item.rejectedQty || 0,
 				grnNo: item.grnNo || '',
@@ -1703,7 +1681,7 @@ const handleVSIRUpdate = (event?: any) => {
 			vendorName: '', // Always default to empty string
 			items: [],
 		});
-		setItemInput({ itemName: '', itemCode: '', materialIssueNo: '', qty: undefined, closingStock: '', indentStatus: '', receivedQty: 0, okQty: undefined, reworkQty: 0, rejectedQty: 0, grnNo: '', debitNoteOrQtyReturned: '', remarks: '' });
+		setItemInput({ itemName: '', itemCode: '', materialIssueNo: '', qty: 0, closingStock: '', indentStatus: '', receivedQty: 0, okQty: 0, reworkQty: 0, rejectedQty: 0, grnNo: '', debitNoteOrQtyReturned: '', remarks: '' });
 	};
 
 	// Build a human-friendly debug report indicating where values come from
@@ -2166,15 +2144,15 @@ const handleVSIRUpdate = (event?: any) => {
 					)}
 					<input placeholder="Item Code" value={itemInput.itemCode} onChange={e => setItemInput({ ...itemInput, itemCode: e.target.value })} readOnly={itemNames.length > 0} />
 					<input placeholder="Material Issue No" value={itemInput.materialIssueNo} onChange={e => setItemInput({ ...itemInput, materialIssueNo: e.target.value })} />
-					<input type="number" placeholder="Qty" value={itemInput.qty || ''} onChange={e => setItemInput({ ...itemInput, qty: Number(e.target.value) })} />
+					<input type="number" placeholder="Qty" min="0" value={itemInput.qty || ''} onChange={e => setItemInput({ ...itemInput, qty: Math.max(0, Number(e.target.value)) })} />
 					<select value={itemInput.indentStatus} onChange={e => setItemInput({ ...itemInput, indentStatus: e.target.value })} >
 						<option value="">Indent Status</option>
 						{indentStatusOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
 					</select>
-					<input type="number" placeholder="Received Qty" value={itemInput.receivedQty || ''} onChange={e => setItemInput({ ...itemInput, receivedQty: Number(e.target.value) })} />
-					<input type="number" placeholder="OK Qty" value={itemInput.okQty || ''} disabled title="OK Qty is read-only and cannot be manually edited" />
-					<input type="number" placeholder="Rework Qty" value={itemInput.reworkQty || ''} onChange={e => setItemInput({ ...itemInput, reworkQty: Number(e.target.value) })} />
-					<input type="number" placeholder="Rejected Qty" value={itemInput.rejectedQty || ''} onChange={e => setItemInput({ ...itemInput, rejectedQty: Number(e.target.value) })} />
+					<input type="number" placeholder="Received Qty" min="0" value={itemInput.receivedQty || ''} onChange={e => setItemInput({ ...itemInput, receivedQty: Math.max(0, Number(e.target.value)) })} />
+					<input type="number" placeholder="OK Qty" min="0" value={itemInput.okQty || ''} onChange={e => setItemInput({ ...itemInput, okQty: Math.max(0, Number(e.target.value)) })} />
+					<input type="number" placeholder="Rework Qty" min="0" value={itemInput.reworkQty || ''} onChange={e => setItemInput({ ...itemInput, reworkQty: Math.max(0, Number(e.target.value)) })} />
+					<input type="number" placeholder="Rejected Qty" min="0" value={itemInput.rejectedQty || ''} onChange={e => setItemInput({ ...itemInput, rejectedQty: Math.max(0, Number(e.target.value)) })} />
 					<input placeholder="GRN No" value={itemInput.grnNo} onChange={e => setItemInput({ ...itemInput, grnNo: e.target.value })} />
 					<input placeholder="Debit Note or Qty Returned" value={itemInput.debitNoteOrQtyReturned} onChange={e => setItemInput({ ...itemInput, debitNoteOrQtyReturned: e.target.value })} />
 					<input placeholder="Remarks" value={itemInput.remarks} onChange={e => setItemInput({ ...itemInput, remarks: e.target.value })} />
@@ -2218,8 +2196,7 @@ const handleVSIRUpdate = (event?: any) => {
 										<td style={{ display: 'flex', gap: 4 }}>
 											<button
 												onClick={() => {
-													const editedQty = (item.qty && item.qty < 0) ? undefined : item.qty;
-													setItemInput({ ...item, okQty: undefined, qty: editedQty });
+													setItemInput(item);
 													setEditIdx({ orderIdx: 0, itemIdx });
 												}}
 												style={{ background: '#ff9800', color: '#fff', border: 'none', borderRadius: 3, padding: '4px 8px', cursor: 'pointer', fontSize: 11 }}
