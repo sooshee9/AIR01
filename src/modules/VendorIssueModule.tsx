@@ -518,16 +518,17 @@ const VendorIssueModule: React.FC = () => {
     }
   }, [newIssue, issues, vendorDeptOrders]);
 
-  // Auto-import purchase orders
+  // Auto-import purchase orders - track imported POs to avoid duplicates
   useEffect(() => {
     const importPurchaseOrders = () => {
       const purchaseOrdersRaw = localStorage.getItem('purchaseOrders');
       let purchaseEntries = [];
       try {
         purchaseEntries = purchaseOrdersRaw ? JSON.parse(purchaseOrdersRaw) : [];
-        console.debug('[VendorIssueModule][AutoImport] Parsed purchaseEntries:', purchaseEntries);
+        console.debug('[VendorIssueModule][AutoImport] Parsed purchaseEntries count:', purchaseEntries.length);
       } catch (err) {
         console.error('[VendorIssueModule][AutoImport] Error parsing purchaseOrders:', err);
+        return;
       }
 
       const poGroups: Record<string, any[]> = {};
@@ -538,12 +539,19 @@ const VendorIssueModule: React.FC = () => {
       });
 
       const purchasePOs = Object.keys(poGroups);
-      const existingPOs = new Set(issues.map(issue => issue.materialPurchasePoNo));
+      console.debug('[VendorIssueModule][AutoImport] Unique POs in purchaseOrders:', purchasePOs);
+      
+      // Get the current issues to check existing POs
+      const currentIssues = issues || [];
+      const existingPOs = new Set(currentIssues.map(issue => issue.materialPurchasePoNo));
+      console.debug('[VendorIssueModule][AutoImport] Existing POs in issues:', Array.from(existingPOs));
+      
       let added = false;
-      const newIssues = [...issues];
+      const newIssues = [...currentIssues];
 
       purchasePOs.forEach(poNo => {
         if (!existingPOs.has(poNo)) {
+          console.debug('[VendorIssueModule][AutoImport] Importing new PO:', poNo);
           const group = poGroups[poNo];
           const items = group.map((item: any) => ({
             itemName: item.itemName || item.model || '',
@@ -559,15 +567,12 @@ const VendorIssueModule: React.FC = () => {
           if (match && typeof match.dcNo !== 'undefined' && String(match.dcNo).trim() !== '') {
             dcNo = String(match.dcNo);
             console.debug('[VendorIssueModule][AutoImport] Using DC No from VendorDept:', dcNo);
-          } else {
-            console.debug('[VendorIssueModule][AutoImport] Using fallback DC No:', dcNo);
           }
           
-          // Get OA No and Batch No - prioritize VendorDept, then PSIR
+          // Get OA No and Batch No from PSIR
           let autoOaNo = match?.oaNo || '';
           let autoBatchNo = match?.batchNo || '';
           
-          // Always try PSIR first for OA No and Batch No since it's the source of truth
           try {
             const psirRaw = localStorage.getItem('psirData');
             if (psirRaw) {
@@ -575,12 +580,9 @@ const VendorIssueModule: React.FC = () => {
               if (Array.isArray(psirs)) {
                 const psirMatch = psirs.find((p: any) => p.poNo === poNo);
                 if (psirMatch) {
-                  console.debug('[VendorIssueModule][AutoImport] Found PSIR record for PO:', poNo, psirMatch);
                   autoOaNo = psirMatch.oaNo || autoOaNo;
                   autoBatchNo = psirMatch.batchNo || autoBatchNo;
-                  console.debug('[VendorIssueModule][AutoImport] Set OA No:', autoOaNo, 'Batch No:', autoBatchNo);
-                } else {
-                  console.debug('[VendorIssueModule][AutoImport] No matching PSIR record for PO:', poNo);
+                  console.debug('[VendorIssueModule][AutoImport] PSIR values for PO', poNo, ':', { autoOaNo, autoBatchNo });
                 }
               }
             }
@@ -588,24 +590,19 @@ const VendorIssueModule: React.FC = () => {
             console.error('[VendorIssueModule][AutoImport] Error reading PSIR:', e);
           }
           
-          console.debug('[VendorIssueModule][AutoImport] Final values - OA No:', autoOaNo, 'Batch No:', autoBatchNo);
-          
-          // Get vendor name and vendor batch no from VendorDept
+          // Get vendor name and vendor batch no
           let autoVendorName = match?.vendorName || '';
           let autoVendorBatchNo = match?.vendorBatchNo || '';
           
-          // If vendor batch no not found in VendorDept, try VSIR
           if (!autoVendorBatchNo) {
             const vsirVendorBatchNo = getVendorBatchNoFromVSIR(poNo);
             if (vsirVendorBatchNo) {
               autoVendorBatchNo = vsirVendorBatchNo;
-              console.debug('[VendorIssueModule][AutoImport] Found vendor batch no from VSIR:', autoVendorBatchNo);
+              console.debug('[VendorIssueModule][AutoImport] VSIR vendor batch no:', autoVendorBatchNo);
             }
           }
           
-          console.debug('[VendorIssueModule][AutoImport] Vendor Name:', autoVendorName, 'Vendor Batch No:', autoVendorBatchNo);
-          
-          newIssues.push({
+          const newIssueObj = {
             date: first?.orderPlaceDate || new Date().toISOString().slice(0, 10),
             materialPurchasePoNo: poNo,
             oaNo: autoOaNo,
@@ -615,14 +612,22 @@ const VendorIssueModule: React.FC = () => {
             issueNo: getNextIssueNo(newIssues),
             vendorName: autoVendorName,
             items,
-          });
+          };
+          
+          newIssues.push(newIssueObj);
+          console.debug('[VendorIssueModule][AutoImport] Added issue for PO:', poNo, newIssueObj);
           added = true;
+        } else {
+          console.debug('[VendorIssueModule][AutoImport] PO already exists, skipping:', poNo);
         }
       });
 
       if (added) {
-        console.debug('[VendorIssueModule][AutoImport] Imported new issues:', newIssues);
+        console.debug('[VendorIssueModule][AutoImport] Total issues before dedup:', newIssues.length);
         const dedupedNewIssues = deduplicateVendorIssues(newIssues);
+        console.debug('[VendorIssueModule][AutoImport] Total issues after dedup:', dedupedNewIssues.length);
+        console.debug('[VendorIssueModule][AutoImport] Deduped issues:', dedupedNewIssues.map(i => i.materialPurchasePoNo));
+        
         setIssues(dedupedNewIssues);
         if (userUid) {
           (async () => {
@@ -631,6 +636,7 @@ const VendorIssueModule: React.FC = () => {
                 if (iss.id) await updateVendorIssue(userUid, iss.id, iss);
                 else await addVendorIssue(userUid, iss);
               }));
+              console.debug('[VendorIssueModule][AutoImport] Imported issues persisted to Firestore');
             } catch (err) {
               console.error('[VendorIssueModule] Failed to persist imported issues to Firestore:', err);
               try { localStorage.setItem('vendorIssueData', JSON.stringify(dedupedNewIssues)); } catch {}
@@ -649,7 +655,7 @@ const VendorIssueModule: React.FC = () => {
       window.removeEventListener('storage', importPurchaseOrders);
       clearInterval(interval);
     };
-  }, [issues, vendorDeptOrders]);
+  }, [userUid, vendorDeptOrders]);
 
   // Fill missing OA No and Batch No from PSIR for existing issues
   useEffect(() => {
