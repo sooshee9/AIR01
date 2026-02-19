@@ -82,6 +82,23 @@ const VSIRModule: React.FC = () => {
   // Track existing PO+ItemCode combinations to prevent duplicates during import
   const existingCombinationsRef = useRef<Set<string>>(new Set());
 
+  // Helper: create a composite key for deduplication
+  const makeKey = (poNo: string, itemCode: string) => `${String(poNo).trim().toLowerCase()}|${String(itemCode).trim().toLowerCase()}`;
+
+  // Helper: deduplicate VSIR records by poNo+itemCode (keep first occurrence)
+  const deduplicateVSIRRecords = (arr: VSRIRecord[]): VSRIRecord[] => {
+    const seen = new Set<string>();
+    const deduped: VSRIRecord[] = [];
+    for (const rec of arr) {
+      const key = makeKey(rec.poNo, rec.itemCode);
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduped.push(rec);
+      }
+    }
+    return deduped;
+  };
+
   // Initialize component - set isInitialized to true on mount
   useEffect(() => {
     setIsInitialized(true);
@@ -97,7 +114,8 @@ const VSIRModule: React.FC = () => {
         // subscribe to VSIR records
         const unsubVSIR = subscribeVSIRRecords(uid, (docs) => {
           try {
-            setRecords(docs.map(d => ({ ...d })) as any[]);
+            const dedupedDocs = deduplicateVSIRRecords(docs.map(d => ({ ...d })) as VSRIRecord[]);
+            setRecords(dedupedDocs);
           } catch (e) { console.error('[VSIR] Error mapping vsir docs', e); }
         });
 
@@ -688,23 +706,6 @@ const VSIRModule: React.FC = () => {
     setItemInput(edited);
     setFormData({ itemName: edited.itemName });
     setEditIdx(idx);
-  };
-
-  // Helper: create a composite key for deduplication
-  const makeKey = (poNo: string, itemCode: string) => `${String(poNo).trim().toLowerCase()}|${String(itemCode).trim().toLowerCase()}`;
-
-  // Helper: deduplicate VSIR records by poNo+itemCode (keep first occurrence)
-  const deduplicateVSIRRecords = (arr: VSRIRecord[]): VSRIRecord[] => {
-    const seen = new Set<string>();
-    const deduped: VSRIRecord[] = [];
-    for (const rec of arr) {
-      const key = makeKey(rec.poNo, rec.itemCode);
-      if (!seen.has(key)) {
-        seen.add(key);
-        deduped.push(rec);
-      }
-    }
-    return deduped;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
