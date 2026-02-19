@@ -752,13 +752,12 @@ const VSIRModule: React.FC = () => {
       updatedRecords = [...records];
       // Use the Firestore ID if present
       const firestoreId = records[existingIdx].id;
-      const updatedRecord = { ...records[existingIdx], ...finalItemInput, id: firestoreId };
-      updatedRecords[existingIdx] = updatedRecord;
+      updatedRecords[existingIdx] = { ...records[existingIdx], ...finalItemInput, id: firestoreId };
       setRecords(deduplicateVSIRRecords(updatedRecords));
-      // Persist to Firestore (use the NEW updated record, not stale records[existingIdx])
+      // Persist to Firestore
       if (userUid && firestoreId) {
         try {
-          await updateVSIRRecord(userUid, String(firestoreId), updatedRecord);
+          await updateVSIRRecord(userUid, String(firestoreId), { ...records[existingIdx], ...finalItemInput, id: firestoreId });
         } catch (err) {
           console.error('[VSIR] Error persisting VSIR to Firestore:', err);
         }
@@ -788,28 +787,7 @@ const VSIRModule: React.FC = () => {
         setRecords(updatedRecords);
       }
     }
-    // Clear form after submit to allow fresh entries and show data was saved
-    setItemInput({
-      receivedDate: '',
-      indentNo: '',
-      poNo: '',
-      oaNo: '',
-      purchaseBatchNo: '',
-      vendorBatchNo: '',
-      dcNo: '',
-      invoiceDcNo: '',
-      vendorName: '',
-      itemName: '',
-      itemCode: '',
-      qtyReceived: 0,
-      okQty: 0,
-      reworkQty: 0,
-      rejectQty: 0,
-      grnNo: '',
-      remarks: '',
-    });
-    setFormData({ itemName: '' });
-    setEditIdx(null);
+    // Do NOT reset form after submit, so values are held
   };
 
   return (
