@@ -82,6 +82,9 @@ const VSIRModule: React.FC = () => {
   // Track existing PO+ItemCode combinations to prevent duplicates during import
   const existingCombinationsRef = useRef<Set<string>>(new Set());
 
+  // Ref to track previous records to prevent unnecessary re-renders
+  const prevRecordsRef = useRef<VSRIRecord[]>([]);
+
   // Helper: create a composite key for deduplication
   const makeKey = (poNo: string, itemCode: string) => `${String(poNo).trim().toLowerCase()}|${String(itemCode).trim().toLowerCase()}`;
 
@@ -115,7 +118,13 @@ const VSIRModule: React.FC = () => {
         const unsubVSIR = subscribeVSIRRecords(uid, (docs) => {
           try {
             const dedupedDocs = deduplicateVSIRRecords(docs.map(d => ({ ...d })) as VSRIRecord[]);
-            setRecords(dedupedDocs);
+            // Only update if records actually changed
+            const hasChanged = dedupedDocs.length !== prevRecordsRef.current.length ||
+              !dedupedDocs.every((r, i) => r.id === prevRecordsRef.current[i]?.id);
+            if (hasChanged) {
+              prevRecordsRef.current = dedupedDocs;
+              setRecords(dedupedDocs);
+            }
           } catch (e) { console.error('[VSIR] Error mapping vsir docs', e); }
         });
 
