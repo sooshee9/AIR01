@@ -787,7 +787,28 @@ const VSIRModule: React.FC = () => {
         setRecords(updatedRecords);
       }
     }
-    // Do NOT reset form after submit, so values are held
+    // Clear form after submit to allow fresh entries and show data was saved
+    setItemInput({
+      receivedDate: '',
+      indentNo: '',
+      poNo: '',
+      oaNo: '',
+      purchaseBatchNo: '',
+      vendorBatchNo: '',
+      dcNo: '',
+      invoiceDcNo: '',
+      vendorName: '',
+      itemName: '',
+      itemCode: '',
+      qtyReceived: 0,
+      okQty: 0,
+      reworkQty: 0,
+      rejectQty: 0,
+      grnNo: '',
+      remarks: '',
+    });
+    setFormData({ itemName: '' });
+    setEditIdx(null);
   };
 
   return (
