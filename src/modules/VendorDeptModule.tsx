@@ -11,6 +11,7 @@ interface VendorDeptItem {
 	itemCode: string;
 	materialIssueNo: string;
 	qty: number;
+	plannedQty?: number;
 	closingStock?: number | string;
 	indentStatus: string;
 	receivedQty: number;
@@ -1019,9 +1020,9 @@ useEffect(() => {
 
 	const handleAddItem = () => {
 		if (!itemInput.itemName || !itemInput.itemCode || !itemInput.materialIssueNo || itemInput.qty <= 0) return;
-		const itemWithStock = { ...itemInput, closingStock: getClosingStock(itemInput.itemCode, itemInput.itemName) };
+		const itemWithStock = { ...itemInput, plannedQty: itemInput.qty, closingStock: getClosingStock(itemInput.itemCode, itemInput.itemName) };
 		setNewOrder({ ...newOrder, items: [...newOrder.items, itemWithStock] });
-		setItemInput({ itemName: '', itemCode: '', materialIssueNo: '', qty: 0, closingStock: '', indentStatus: '', receivedQty: 0, okQty: 0, reworkQty: 0, rejectedQty: 0, grnNo: '', debitNoteOrQtyReturned: '', remarks: '' });
+		setItemInput({ itemName: '', itemCode: '', materialIssueNo: '', qty: 0, plannedQty: 0, closingStock: '', indentStatus: '', receivedQty: 0, okQty: 0, reworkQty: 0, rejectedQty: 0, grnNo: '', debitNoteOrQtyReturned: '', remarks: '' });
 	};
 
 	const handleDeleteOrder = (idx: number) => {
@@ -1275,10 +1276,10 @@ useEffect(() => {
 					// If editing an item in newOrder.items (pre-save table), update it in newOrder.items
 					setNewOrder(prev => ({
 						...prev,
-						items: prev.items.map((item, iIdx) => iIdx === editIdx.itemIdx ? { ...itemInput, closingStock: getClosingStock(itemInput.itemCode, itemInput.itemName) } : item)
+						items: prev.items.map((item, iIdx) => iIdx === editIdx.itemIdx ? { ...itemInput, plannedQty: itemInput.qty, closingStock: getClosingStock(itemInput.itemCode, itemInput.itemName) } : item)
 					}));
 					setEditIdx(null);
-					setItemInput({ itemName: '', itemCode: '', materialIssueNo: '', qty: 0, closingStock: '', indentStatus: '', receivedQty: 0, okQty: 0, reworkQty: 0, rejectedQty: 0, grnNo: '', debitNoteOrQtyReturned: '', remarks: '' });
+					setItemInput({ itemName: '', itemCode: '', materialIssueNo: '', qty: 0, plannedQty: 0, closingStock: '', indentStatus: '', receivedQty: 0, okQty: 0, reworkQty: 0, rejectedQty: 0, grnNo: '', debitNoteOrQtyReturned: '', remarks: '' });
 				} else {
 					handleAddItem();
 				}
@@ -2170,6 +2171,7 @@ const handleVSIRUpdate = (event?: any) => {
 									<th>Item Code</th>
 									<th>Material Issue No</th>
 									<th>Qty</th>
+																	<th>Planned Qty</th>
 									<th>Indent Status</th>
 									<th>Received Qty</th>
 									<th>OK Qty</th>
@@ -2186,6 +2188,7 @@ const handleVSIRUpdate = (event?: any) => {
 										<td>{item.itemCode || '—'}</td>
 										<td>{item.materialIssueNo || '—'}</td>
 										<td>{item.qty || '—'}</td>
+																		<td>{item.plannedQty || '—'}</td>
 										<td>{item.indentStatus || '—'}</td>
 										<td>{item.receivedQty || '—'}</td>
 										<td>{item.okQty || '—'}</td>
@@ -2322,6 +2325,7 @@ const handleVSIRUpdate = (event?: any) => {
 								<th style={{ padding: '10px 8px', textAlign: 'left', minWidth: '80px', borderRight: '1px solid #ccc' }}>OA NO</th>
 								<th style={{ padding: '10px 8px', textAlign: 'left', minWidth: '100px', borderRight: '1px solid #ccc' }}>Vendor</th>
 								<th style={{ padding: '10px 8px', textAlign: 'center', minWidth: '60px', borderRight: '1px solid #ccc' }}>PO Qty</th>
+								<th style={{ padding: '10px 8px', textAlign: 'center', minWidth: '60px', borderRight: '1px solid #ccc' }}>Planned Qty</th>
 								<th style={{ padding: '10px 8px', textAlign: 'center', minWidth: '60px', borderRight: '1px solid #ccc' }}>Rcvd Qty</th>
 								<th style={{ padding: '10px 8px', textAlign: 'center', minWidth: '50px', borderRight: '1px solid #ccc' }}>OK Qty</th>
 								<th style={{ padding: '10px 8px', textAlign: 'center', minWidth: '60px', borderRight: '1px solid #ccc' }}>Rework Qty</th>
@@ -2373,6 +2377,7 @@ const handleVSIRUpdate = (event?: any) => {
 											<td style={{ padding: '10px 8px', borderRight: '1px solid #ccc' }}>{order.oaNo}</td>
 											<td style={{ padding: '10px 8px', borderRight: '1px solid #ccc' }}>{order.vendorName}</td>
 											<td style={{ padding: '10px 8px', textAlign: 'center', borderRight: '1px solid #ccc' }}>{Math.abs(getPurchaseQty(order.materialPurchasePoNo, item.itemCode, purchaseOrders, purchaseData)) || 0}</td>
+											<td style={{ padding: '10px 8px', textAlign: 'center', borderRight: '1px solid #ccc' }}>{item.plannedQty ?? '—'}</td>
 											<td style={{ padding: '10px 8px', textAlign: 'center', borderRight: '1px solid #ccc' }}>{item.receivedQty || '—'}</td>
 											<td style={{ padding: '10px 8px', textAlign: 'center', borderRight: '1px solid #ccc' }}>{item.okQty || '—'}</td>
 											<td style={{ padding: '10px 8px', textAlign: 'center', borderRight: '1px solid #ccc' }}>{item.reworkQty || '—'}</td>
