@@ -752,12 +752,13 @@ const VSIRModule: React.FC = () => {
       updatedRecords = [...records];
       // Use the Firestore ID if present
       const firestoreId = records[existingIdx].id;
-      updatedRecords[existingIdx] = { ...records[existingIdx], ...finalItemInput, id: firestoreId };
+      const updatedRecord = { ...records[existingIdx], ...finalItemInput, id: firestoreId };
+      updatedRecords[existingIdx] = updatedRecord;
       setRecords(deduplicateVSIRRecords(updatedRecords));
-      // Persist to Firestore
+      // Persist to Firestore (use the NEW updated record, not stale records[existingIdx])
       if (userUid && firestoreId) {
         try {
-          await updateVSIRRecord(userUid, String(firestoreId), { ...records[existingIdx], ...finalItemInput, id: firestoreId });
+          await updateVSIRRecord(userUid, String(firestoreId), updatedRecord);
         } catch (err) {
           console.error('[VSIR] Error persisting VSIR to Firestore:', err);
         }
