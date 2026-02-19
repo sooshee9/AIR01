@@ -1,5 +1,11 @@
+// ...existing code...
+// ...existing code...
+
+const VendorDeptModule = () => {
 	// Debug state for OK Qty auto-fill
 	const [debugOkQty, setDebugOkQty] = useState<any>(null);
+	// ...existing code...
+
 import React, { useState, useEffect } from 'react';
 import bus from '../utils/eventBus';
 import { onAuthStateChanged } from 'firebase/auth';
