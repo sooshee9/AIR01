@@ -94,7 +94,7 @@ const VendorIssueModule: React.FC = () => {
             if (raw) {
               const arr = JSON.parse(raw || '[]');
               if (Array.isArray(arr) && arr.length > 0) {
-                for (const it of arr) {
+                for (const it of arr as VendorIssue[]) {
                   try {
                     const payload = { ...it } as any;
                     if (typeof payload.id !== 'undefined') delete payload.id;
@@ -104,7 +104,7 @@ const VendorIssueModule: React.FC = () => {
                     console.warn('[VendorIssueModule] migration addDoc failed for item', it, err);
                   }
                 }
-                try { localStorage.removeItem('vendorIssueData'); } catch {}
+                    try { localStorage.removeItem('vendorIssueData'); } catch {}
               }
             }
           } catch (err) {
@@ -981,7 +981,21 @@ const VendorIssueModule: React.FC = () => {
           <select
             name="itemName"
             value={itemInput.itemName}
-            onChange={handleChange}
+            onChange={e => {
+              const value = e.target.value;
+              const found = itemMaster.find(item => item.itemName === value);
+              const foundCode = found ? found.itemCode : '';
+              // Find plannedQty from vendorDeptOrders
+              let plannedQty = 0;
+              for (const order of vendorDeptOrders) {
+                const deptItem = (order.items || []).find(it => it.itemName === value && it.itemCode === foundCode);
+                if (deptItem && deptItem.plannedQty !== undefined) {
+                  plannedQty = deptItem.plannedQty;
+                  break;
+                }
+              }
+              setItemInput({ ...itemInput, itemName: value, itemCode: foundCode, qty: plannedQty });
+            }}
           >
             <option value="">Select Item Name</option>
             {itemNames.map(name => (
