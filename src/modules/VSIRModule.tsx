@@ -849,83 +849,21 @@ const VSIRModule: React.FC = () => {
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>
-            ) : field.key === 'itemCode' ? (
+            ) : (
               <input
                 type={field.type}
                 name={field.key}
-                let finalItemInput = { ...itemInput };
-
-                // Vendor Batch No should ONLY be populated if invoiceDcNo is manually entered (prerequisite)
-                const hasInvoiceDcNo = finalItemInput.invoiceDcNo && String(finalItemInput.invoiceDcNo).trim();
-                if (hasInvoiceDcNo && !finalItemInput.vendorBatchNo?.trim() && finalItemInput.poNo) {
-                  let vb = getVendorBatchNoForPO(finalItemInput.poNo);
-                  if (!vb) {
-                    console.log('[VSIR] Vendor Batch No not found in VendorDept for PO:', finalItemInput.poNo, '- leaving empty for manual entry or sync');
-                    vb = '';
-                  }
-                  finalItemInput.vendorBatchNo = vb;
-                }
-
-                // Strict duplicate prevention: Only update existing, never add duplicate
-                const existingIdx = records.findIndex((r) => {
-                  return String(r.poNo).trim().toLowerCase() === String(finalItemInput.poNo).trim().toLowerCase() &&
-                    String(r.itemCode).trim().toLowerCase() === String(finalItemInput.itemCode).trim().toLowerCase();
-                });
-                if (existingIdx !== -1) {
-                  // Update existing record only
-                  const updatedRecord = { ...records[existingIdx], ...finalItemInput };
-                  const updatedRecords = [...records];
-                  updatedRecords[existingIdx] = updatedRecord;
-                  setRecords(updatedRecords);
-                  // Persist to Firestore
-                  if (userUid) {
-                    try {
-                      await updateVSIRRecord(userUid, String(updatedRecord.id), updatedRecord);
-                    } catch (err) {
-                      console.error('[VSIR] Error updating VSIR record:', err);
-                    }
-                  }
-                } else {
-                  // Add new record only if not duplicate
-                  const newRecord: VSRIRecord = {
-                    ...finalItemInput,
-                    id: Date.now(),
-                  };
-                  const updatedRecords = [...records, newRecord];
-                  setRecords(updatedRecords);
-                  if (userUid) {
-                    try {
-                      await addVSIRRecord(userUid, newRecord);
-                    } catch (err) {
-                      console.error('[VSIR] Error persisting VSIR to Firestore:', err);
-                    }
-                  }
-                }
-            border: 'none',
-            borderRadius: 4,
-            fontWeight: 500,
-            cursor: 'pointer',
-          }}
-        >
-          ▶ Run Manual Import
+                value={(itemInput as any)[field.key]}
+                onChange={handleChange}
+                style={{ width: '100%', padding: 6, borderRadius: 4, border: '1px solid #bbb' }}
+              />
+            )}
+          </div>
+        ))}
+        <button type="submit" style={{ padding: '10px 24px', background: '#1a237e', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 500, marginTop: 24 }}>
+          {editIdx !== null ? 'Update' : 'Add'}
         </button>
-        <button
-          onClick={() => {
-            alert(`Purchase Orders: ${purchaseOrders.length}\nPurchase Data: ${purchaseData.length}\nVSIR Records: ${records.length}`);
-          }}
-          style={{
-            padding: '8px 16px',
-            background: '#4caf50',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 4,
-            fontWeight: 500,
-            cursor: 'pointer',
-          }}
-        >
-          📊 Show Import Status
-        </button>
-      </div>
+      </form>
 
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', border: '1px solid #ccc', fontSize: 12 }}>
