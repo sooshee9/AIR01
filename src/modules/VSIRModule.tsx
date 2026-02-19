@@ -786,44 +786,7 @@ const VSIRModule: React.FC = () => {
     <div>
       <h2>VSRI Module</h2>
       
-      {/* Diagnostic Panel */}
-      <div style={{ marginBottom: 20, padding: 12, background: '#fff3cd', border: '2px solid #ffc107', borderRadius: 4 }}>
-        <h4 style={{ margin: '0 0 8px 0', color: '#856404' }}>📊 Data Import Diagnostic</h4>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8, fontSize: 12 }}>
-                  {/* Debug Panel for Qty/OK Qty/Rework Qty/Reject Qty filling */}
-                  <div style={{ marginTop: 16, background: '#e3f2fd', border: '1px solid #90caf9', borderRadius: 4, padding: 10 }}>
-                    <h4 style={{ margin: '0 0 8px 0', color: '#1565c0', fontSize: 15 }}>🛠️ Debug Panel: Qty/OK Qty Logic</h4>
-                    <div style={{ fontSize: 12, marginBottom: 6 }}>
-                      <strong>Current Item Input:</strong>
-                      <pre style={{ background: '#f5f5f5', padding: 6, borderRadius: 3, fontSize: 11, margin: 0 }}>{JSON.stringify(itemInput, null, 2)}</pre>
-                    </div>
-                    <div style={{ fontSize: 12, marginBottom: 6 }}>
-                      <strong>Last 3 Records (Qty/OK/Reject/Rework):</strong>
-                      <pre style={{ background: '#f5f5f5', padding: 6, borderRadius: 3, fontSize: 11, margin: 0 }}>
-                        {JSON.stringify(records.slice(-3).map(r => ({
-                          id: r.id,
-                          itemCode: r.itemCode,
-                          qtyReceived: r.qtyReceived,
-                          okQty: r.okQty,
-                          reworkQty: r.reworkQty,
-                          rejectQty: r.rejectQty
-                        })), null, 2)}
-                      </pre>
-                    </div>
-                    <div style={{ fontSize: 12, marginBottom: 6 }}>
-                      <strong>Auto-fill/Sync Logic:</strong>
-                      <ul style={{ margin: 0, paddingLeft: 18 }}>
-                        <li>Qty Received, OK Qty, Rework Qty, Reject Qty are user-editable and persisted per record.</li>
-                        <li>Vendor Batch No is auto-filled from VendorDept if Invoice/DC No is entered and VendorDept data exists for the PO.</li>
-                        <li>Indent No is auto-filled from PSIR if PO No matches a PSIR record.</li>
-                        <li>All changes are logged in the browser console with [VSIR] or [VSIR-DEBUG] tags.</li>
-                        <li>If values are not holding, check for Firestore sync issues, duplicate keys, or missing userUid.</li>
-                      </ul>
-                    </div>
-                    <div style={{ fontSize: 12, color: '#b71c1c', marginTop: 6 }}>
-                      <strong>Having issues?</strong> Open browser console and look for [VSIR] or [VSIR-DEBUG] logs for step-by-step value flow.
-                    </div>
-                  </div>
+      {/* Diagnostic Panel removed as requested */}
           <div>
             <strong>Purchase Orders:</strong> {purchaseOrders.length} records
             {purchaseOrders.length > 0 && (
