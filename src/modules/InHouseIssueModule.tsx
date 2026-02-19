@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth, db } from '../firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { getItemMaster } from '../utils/firestoreServices';
+import { auth } from '../firebase';
+import {
+  getItemMaster,
+  subscribeInHouseIssues,
+  addInHouseIssue,
+  updateInHouseIssue,
+  deleteInHouseIssue,
+} from '../utils/firestoreServices';
 
 interface InHouseIssueItem {
   itemName: string;
@@ -17,6 +22,7 @@ interface InHouseIssueItem {
 }
 
 interface InHouseIssue {
+  id?: string;  // Firestore document ID
   reqNo: string;
   reqDate: string;
   indentNo: string;
@@ -107,49 +113,71 @@ const InHouseIssueModule: React.FC = () => {
   const [, setVendors] = useState<string[]>([]);
   const [, setVendorBatchNos] = useState<string[]>([]);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
+  const [userUid, setUserUid] = useState<string | null>(null);
+  const [editIssueIdx, setEditIssueIdx] = useState<number | null>(null);
 
-  // Migrate existing localStorage `inHouseIssueData` into Firestore on sign-in
+  // Auth state
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       const uid = u ? u.uid : null;
-      if (uid) {
-        (async () => {
-          try {
-            const raw = localStorage.getItem('inHouseIssueData');
-            if (raw) {
-              const arr = JSON.parse(raw || '[]');
-              if (Array.isArray(arr) && arr.length > 0) {
-                for (const it of arr) {
-                  try {
-                    const payload = { ...it } as any;
-                    if (typeof payload.id !== 'undefined') delete payload.id;
-                    const col = collection(db, 'userData', uid, 'inHouseIssueData');
-                    await addDoc(col, { ...payload, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-                  } catch (err) {
-                    console.warn('[InHouseIssueModule] migration addDoc failed for item', it, err);
-                  }
-                }
-                try { localStorage.removeItem('inHouseIssueData'); } catch {}
+      setUserUid(uid);
+      console.log('[InHouseIssueModule] Auth state changed, uid:', uid);
+    });
+    return () => unsub();
+  }, []);
+
+  // Migrate existing localStorage `inHouseIssueData` into Firestore on sign-in
+  useEffect(() => {
+    if (!userUid) return;
+
+    (async () => {
+      try {
+        const raw = localStorage.getItem('inHouseIssueData');
+        if (raw) {
+          const arr = JSON.parse(raw || '[]');
+          if (Array.isArray(arr) && arr.length > 0) {
+            console.log('[InHouseIssueModule] Migrating', arr.length, 'issues to Firestore');
+            for (const it of arr) {
+              try {
+                const payload = { ...it } as any;
+                if (typeof payload.id !== 'undefined') delete payload.id;
+                await addInHouseIssue(userUid, payload);
+              } catch (err) {
+                console.warn('[InHouseIssueModule] migration add failed for item', it, err);
               }
             }
-          } catch (err) {
-            console.error('[InHouseIssueModule] Migration failed:', err);
+            try { localStorage.removeItem('inHouseIssueData'); } catch {}
+            console.log('[InHouseIssueModule] Migration to Firestore completed');
           }
-
-          // Load Item Master from Firestore
-          try {
-            const items = await getItemMaster(uid);
-            setItemMaster((items || []) as any[]);
-            setItemNames((items || []).map((i: any) => i.itemName).filter(Boolean));
-            console.log('[InHouseIssueModule] Loaded item master:', items?.length || 0, 'items');
-          } catch (err) {
-            console.error('[InHouseIssueModule] Failed to load item master:', err);
-          }
-        })();
+        }
+      } catch (err) {
+        console.error('[InHouseIssueModule] Migration failed:', err);
       }
+
+      // Load Item Master from Firestore
+      try {
+        const items = await getItemMaster(userUid);
+        setItemMaster((items || []) as any[]);
+        setItemNames((items || []).map((i: any) => i.itemName).filter(Boolean));
+        console.log('[InHouseIssueModule] Loaded item master:', items?.length || 0, 'items');
+      } catch (err) {
+        console.error('[InHouseIssueModule] Failed to load item master:', err);
+      }
+    })();
+  }, [userUid]);
+
+  // Subscribe to Firestore inHouseIssues
+  useEffect(() => {
+    if (!userUid) return;
+
+    console.log('[InHouseIssueModule] Setting up Firestore subscription for userUid:', userUid);
+    const unsub = subscribeInHouseIssues(userUid, (docs) => {
+      console.log('[InHouseIssueModule] ✓ Received inHouseIssues from Firestore:', docs.length, 'items');
+      setIssues(docs);
     });
-    return () => { try { unsub(); } catch {} };
-  }, []);
+
+    return () => unsub();
+  }, [userUid]);
 
   // Helper: Get batch numbers for selected vendor
   const getVendorBatchNos = (vendor: string): string[] => {
@@ -270,11 +298,8 @@ const InHouseIssueModule: React.FC = () => {
     }
   };
 
+  // Load item master and vendor data from localStorage on mount (for non-Firestore data)
   useEffect(() => {
-    const savedData = localStorage.getItem('inHouseIssueData');
-    if (savedData) {
-      setIssues(JSON.parse(savedData));
-    }
     // Fetch Item Names and Codes from Item Master
     const itemMasterRaw = localStorage.getItem('itemMasterData');
     if (itemMasterRaw) {
@@ -704,19 +729,27 @@ const InHouseIssueModule: React.FC = () => {
     }
   };
 
-  const [editIssueIdx, setEditIssueIdx] = useState<number | null>(null);
-
   const handleEditIssue = (idx: number) => {
     setNewIssue(issues[idx]);
     setEditIssueIdx(idx);
   };
 
   const handleUpdateIssue = () => {
-    if (editIssueIdx === null) return;
-    const updated = issues.map((issue, idx) => idx === editIssueIdx ? newIssue : issue);
-    setIssues(updated);
-    localStorage.setItem('inHouseIssueData', JSON.stringify(updated));
-    setNewIssue({ reqNo: getNextReqNo(updated), reqDate: '', indentNo: '', oaNo: '', poNo: '', vendor: '', purchaseBatchNo: '', vendorBatchNo: '', issueNo: getNextIssueNo(updated), items: [] });
+    if (editIssueIdx === null || !userUid) return;
+    const issueToUpdate = issues[editIssueIdx];
+    if (!issueToUpdate?.id) {
+      console.error('[InHouseIssueModule] No issue ID found for update');
+      return;
+    }
+    (async () => {
+      try {
+        await updateInHouseIssue(userUid, issueToUpdate.id as string, newIssue);
+        console.log('[InHouseIssueModule] ✓ Issue updated in Firestore:', issueToUpdate.id);
+      } catch (err) {
+        console.error('[InHouseIssueModule] Failed to update issue:', err);
+      }
+    })();
+    setNewIssue({ reqNo: getNextReqNo(issues), reqDate: '', indentNo: '', oaNo: '', poNo: '', vendor: '', purchaseBatchNo: '', vendorBatchNo: '', issueNo: getNextIssueNo(issues), items: [] });
     setItemInput({ itemName: '', itemCode: '', transactionType: 'Purchase', batchNo: '', issueQty: 0, reqBy: '', inStock: 0, reqClosed: false, receivedDate: new Date().toISOString().slice(0, 10) });
     setEditIssueIdx(null);
   };
@@ -726,12 +759,51 @@ const InHouseIssueModule: React.FC = () => {
       alert('Please fill in: Req. Date, Req. No, and add at least one item');
       return;
     }
+    if (!userUid) {
+      console.error('[InHouseIssueModule] No userUid available for adding issue');
+      alert('Please sign in to add issues');
+      return;
+    }
     const issueNo = getNextIssueNo(issues);
-    const updated = [...issues, { ...newIssue, issueNo }];
-    setIssues(updated);
-    localStorage.setItem('inHouseIssueData', JSON.stringify(updated));
-    setNewIssue({ reqNo: getNextReqNo(updated), reqDate: '', indentNo: '', oaNo: '', poNo: '', vendor: '', purchaseBatchNo: '', vendorBatchNo: '', issueNo: getNextIssueNo(updated), items: [] });
+    (async () => {
+      try {
+        await addInHouseIssue(userUid, { ...newIssue, issueNo });
+        console.log('[InHouseIssueModule] ✓ Issue added to Firestore');
+      } catch (err) {
+        console.error('[InHouseIssueModule] Failed to add issue:', err);
+      }
+    })();
+    setNewIssue({ reqNo: getNextReqNo(issues), reqDate: '', indentNo: '', oaNo: '', poNo: '', vendor: '', purchaseBatchNo: '', vendorBatchNo: '', issueNo: getNextIssueNo(issues), items: [] });
     setItemInput({ itemName: '', itemCode: '', transactionType: 'Purchase', batchNo: '', issueQty: 0, reqBy: '', inStock: 0, reqClosed: false, receivedDate: new Date().toISOString().slice(0, 10) });
+  };
+
+  const handleDeleteItem = async (issueIdx: number, itemIdx: number) => {
+    if (!userUid) {
+      alert('Please sign in');
+      return;
+    }
+    
+    const issueToUpdate = issues[issueIdx];
+    if (!issueToUpdate?.id) {
+      console.error('[InHouseIssueModule] Issue ID not found');
+      return;
+    }
+
+    try {
+      const updatedItems = issueToUpdate.items.filter((_, i) => i !== itemIdx);
+      if (updatedItems.length === 0) {
+        // Delete entire issue if no items remain
+        await deleteInHouseIssue(userUid, issueToUpdate.id as string);
+        console.log('[InHouseIssueModule] ✓ Issue deleted (no items remaining)');
+      } else {
+        // Update issue with remaining items
+        await updateInHouseIssue(userUid, issueToUpdate.id as string, { ...issueToUpdate, items: updatedItems });
+        console.log('[InHouseIssueModule] ✓ Item deleted from issue');
+      }
+    } catch (err) {
+      console.error('[InHouseIssueModule] Failed to delete item:', err);
+      alert('Failed to delete item: ' + String(err));
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
@@ -1072,15 +1144,30 @@ const InHouseIssueModule: React.FC = () => {
                 <td>{item.issueQty}</td>
                 <td>{item.reqClosed ? 'Yes' : 'No'}</td>
                 <td><button style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer' }} onClick={() => handleEditItem(idx)}>Edit</button></td>
-                <td><button onClick={() => {
-                  setNewIssue(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }));
+                <td><button onClick={(e) => {
+                  e.preventDefault();
+                  const toDelete = issues[idx];
+                  if (!toDelete?.id || !userUid) return;
+                  (async () => {
+                    try {
+                      await deleteInHouseIssue(userUid, toDelete.id as string);
+                      console.log('[InHouseIssueModule] ✓ Issue deleted from Firestore:', toDelete.id);
+                    } catch (err) {
+                      console.error('[InHouseIssueModule] Failed to delete issue:', err);
+                    }
+                  })();
                 }} style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer' }}>Delete</button></td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
-      <button onClick={editIssueIdx !== null ? handleUpdateIssue : handleAddIssue} style={{marginBottom: 16}}>
+      <button 
+        onClick={editIssueIdx !== null ? handleUpdateIssue : handleAddIssue} 
+        style={{marginBottom: 16}}
+        disabled={!userUid}
+        title={!userUid ? 'Please sign in to add/update issues' : ''}
+      >
         {editIssueIdx !== null ? 'Update In House Issue' : 'Add In House Issue'}
       </button>
       <h3>In House Issues</h3>
@@ -1126,16 +1213,7 @@ const InHouseIssueModule: React.FC = () => {
                 <td>{item.issueQty}</td>
                 <td>{item.reqClosed ? 'Yes' : 'No'}</td>
                 <td><button style={{ background: '#1976d2', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer' }} onClick={() => handleEditIssue(idx)}>Edit</button></td>
-                <td><button onClick={() => {
-                  setIssues(prevIssues => {
-                    const updated = prevIssues.map((iss, issIdx) => {
-                      if (issIdx !== idx) return iss;
-                      return { ...iss, items: iss.items.filter((_, itemIdx) => itemIdx !== i) };
-                    }).filter(iss => iss.items.length > 0);
-                    localStorage.setItem('inHouseIssueData', JSON.stringify(updated));
-                    return updated;
-                  });
-                }} style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer' }}>Delete</button></td>
+                <td><button onClick={() => handleDeleteItem(idx, i)} style={{ background: '#e53935', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer' }}>Delete</button></td>
               </tr>
             ))
          )}
