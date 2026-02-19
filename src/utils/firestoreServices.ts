@@ -624,3 +624,48 @@ export const forceCleanupAllData = async (uid: string) => {
     throw error;
   }
 }
+
+// ============ IN HOUSE ISSUES ============
+export const subscribeInHouseIssues = (uid: string, cb: (docs: any[]) => void) => {
+  const col = collection(db, 'users', uid, 'inHouseIssues');
+  const q = query(col, orderBy('createdAt', 'desc'));
+  const unsub = onSnapshot(q, snap => {
+    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    cb(docs);
+  }, (error) => {
+    logger.error('[FirestoreServices] Error subscribing to inHouseIssues:', error);
+    cb([]);
+  });
+  return unsub;
+};
+
+export const addInHouseIssue = async (uid: string, data: any) => {
+  try {
+    const col = collection(db, 'users', uid, 'inHouseIssues');
+    const docRef = await addDoc(col, { ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    return docRef.id;
+  } catch (error) {
+    logger.error('[FirestoreServices] Error adding inHouseIssue:', error);
+    throw error;
+  }
+};
+
+export const updateInHouseIssue = async (uid: string, docId: string, data: any) => {
+  try {
+    const docRef = doc(db, 'users', uid, 'inHouseIssues', docId);
+    await setDoc(docRef, { ...data, updatedAt: serverTimestamp() }, { merge: true });
+  } catch (error) {
+    logger.error('[FirestoreServices] Error updating inHouseIssue:', error);
+    throw error;
+  }
+};
+
+export const deleteInHouseIssue = async (uid: string, docId: string) => {
+  try {
+    const docRef = doc(db, 'users', uid, 'inHouseIssues', docId);
+    await deleteDoc(docRef);
+  } catch (error) {
+    logger.error('[FirestoreServices] Error deleting inHouseIssue:', error);
+    throw error;
+  }
+};
