@@ -80,171 +80,124 @@ const VSIRModule: React.FC = () => {
   const [userUid, setUserUid] = useState<string | null>(null);
   
   // Track existing PO+ItemCode combinations to prevent duplicates during import
-  const existingCombinationsRef = useRef<Set<string>>(new Set());
-
-  // Ref to track previous records to prevent unnecessary re-renders
-  const prevRecordsRef = useRef<VSRIRecord[]>([]);
-
-  // Helper: create a composite key for deduplication
-  const makeKey = (poNo: string, itemCode: string) => `${String(poNo).trim().toLowerCase()}|${String(itemCode).trim().toLowerCase()}`;
-
-  // Helper: deduplicate VSIR records by poNo+itemCode (keep latest occurrence)
-  const deduplicateVSIRRecords = (arr: VSRIRecord[]): VSRIRecord[] => {
-    const map = new Map<string, VSRIRecord>();
-    for (const rec of arr) {
-      const key = makeKey(rec.poNo, rec.itemCode);
-      map.set(key, rec); // always keep the latest occurrence
-    }
-    return Array.from(map.values());
-  };
-
-  // Initialize component - set isInitialized to true on mount
-  useEffect(() => {
-    setIsInitialized(true);
-  }, []);
-
-    // Subscribe to Firestore and load master data when authenticated
-    useEffect(() => {
-      const unsubAuth = onAuthStateChanged(auth, (u) => {
-        const uid = u ? u.uid : null;
-        setUserUid(uid);
-        if (!uid) return;
-
-        // subscribe to VSIR records
-        const unsubVSIR = subscribeVSIRRecords(uid, (docs) => {
-          try {
-            const dedupedDocs = deduplicateVSIRRecords(docs.map(d => ({ ...d })) as VSRIRecord[]);
-            // Always update records to ensure latest values are held
-            prevRecordsRef.current = dedupedDocs;
-            setRecords(dedupedDocs);
-          } catch (e) { console.error('[VSIR] Error mapping vsir docs', e); }
-        });
-
-        // subscribe to vendorDept orders
-        const unsubVendorDepts = subscribeVendorDepts(uid, (docs) => {
-          setVendorDeptOrders(docs || []);
-        });
-
-        // subscribe to PSIR records from Firestore
-        const unsubPsirs = subscribePsirs(uid, (docs) => {
-          console.debug('[VSIR] PSIR records updated:', docs.length, 'records');
-          setPsirData(docs || []);
-        });
-
-        // subscribe to purchaseData in real-time (for auto-import)
-        const unsubPurchaseData = subscribePurchaseData(uid, (docs) => {
-          console.log('[VSIR] ✅ Purchase data subscription updated:', docs.length, 'records');
-          if (docs.length > 0) {
-            console.log('[VSIR] First purchase data entry:', docs[0]);
-            setPurchaseData(docs || []);
-          } else {
-            setPurchaseData([]);
-          }
-        });
-  // Auto-delete all VSIR records if purchaseData is empty
-  useEffect(() => {
-    const runAutoDelete = async () => {
-      if (!userUid || typeof userUid !== 'string') {
-        console.log('[VSIR][DEBUG] Auto-delete not triggered: userUid is missing or invalid.', userUid);
-        return;
-      }
-      if (!Array.isArray(purchaseData) || !Array.isArray(records)) {
-        console.log('[VSIR][DEBUG] Auto-delete not triggered: purchaseData or records is not an array.', purchaseData, records);
-        return;
-      }
-      if (purchaseData.length === 0 && records.length > 0) {
-        console.log('[VSIR][DEBUG] Triggering auto-delete: userUid=', userUid, 'purchaseData.length=', purchaseData.length, 'records.length=', records.length);
-        alert('[VSIR][DEBUG] Attempting to auto-delete all VSIR records because purchaseData is empty. See console for details.');
-        for (const rec of records) {
-          try {
-            if (!rec || !rec.id) {
-              console.log('[VSIR][DEBUG] Skipping invalid record:', rec);
-              continue;
-            }
-            console.log('[VSIR][DEBUG] Attempting to delete VSIR record:', rec);
-            await deleteVSIRRecord(userUid, String(rec.id));
-            console.log('[VSIR][DEBUG] Successfully auto-deleted VSIR record:', rec.id);
-            alert('[VSIR][DEBUG] Successfully auto-deleted VSIR record: ' + rec.id);
-          } catch (e) {
-            const errMsg = (e && typeof e === 'object' && 'message' in e) ? (e as any).message : String(e);
-            alert('[VSIR][DEBUG] Failed to auto-delete VSIR record: ' + rec.id + '\nError: ' + errMsg);
-            console.error('[VSIR][DEBUG] Failed to auto-delete VSIR record:', rec.id, e);
-          }
-        }
-      } else {
-        console.log('[VSIR][DEBUG] Auto-delete not triggered. userUid:', userUid, 'purchaseData.length:', purchaseData.length, 'records.length:', records.length);
-      }
-    };
-    runAutoDelete();
-  }, [userUid, purchaseData]);
-
-
-        // subscribe to purchaseOrders in real-time (alternative source)
-        const unsubPurchaseOrders = subscribePurchaseOrders(uid, (docs) => {
-          console.log('[VSIR] ✅ Purchase orders subscription updated:', docs.length, 'records');
-          if (docs.length > 0) {
-            console.log('[VSIR] First purchase order entry:', docs[0]);
-          }
-          setPurchaseOrders(docs || []);
-        });
-
-        // load one-time master collections
-        (async () => {
-          try {
-            const items = await getItemMaster(uid);
-            setItemMaster((items || []) as any[]);
-            setItemNames((items || []).map((i: any) => i.itemName).filter(Boolean));
-          } catch (e) { console.error('[VSIR] getItemMaster failed', e); }
-          try { const vi = await getVendorIssues(uid); setVendorIssues(vi || []); } catch (e) { console.error('[VSIR] getVendorIssues failed', e); }
-        })();
-
-        // cleanup when signed out or component unmount
-        return () => {
-          try { if (unsubVSIR) unsubVSIR(); } catch {}
-          try { if (unsubVendorDepts) unsubVendorDepts(); } catch {}
-          try { if (unsubPsirs) unsubPsirs(); } catch {}
-          try { if (unsubPurchaseData) unsubPurchaseData(); } catch {}
-          try { if (unsubPurchaseOrders) unsubPurchaseOrders(); } catch {}
-        };
-      });
-
-      return () => { try { unsubAuth(); } catch {} };
-  }, []);
-
-  // Update the existing combinations ref whenever records change
-  useEffect(() => {
-    existingCombinationsRef.current = new Set(
-      records.map(r => `${String(r.poNo).trim().toLowerCase()}|${String(r.itemCode).trim().toLowerCase()}`)
-    );
-    console.log('[VSIR] Updated dedup cache with', existingCombinationsRef.current.size, 'combinations');
-  }, [records]);
-
-  // Auto-fill Indent No from PSIR for all records that have poNo but missing indentNo
-  // PSIR data is already subscribed in the auth effect above, just use it here
-  useEffect(() => {
-    if (!isInitialized || records.length === 0 || psirData.length === 0) {
-      return;
-    }
-
-    console.log('[VSIR] Auto-filling Indent No from Firestore PSIRs');
-    let updated = false;
-    const updatedRecords = records.map(record => {
-      if (record.poNo && (!record.indentNo || record.indentNo.trim() === '')) {
-        for (const psir of psirData) {
-          if (psir.poNo && psir.poNo.toString().trim() === record.poNo.toString().trim()) {
-            const indentNo = psir.indentNo || '';
-            if (indentNo && indentNo !== record.indentNo) {
-              updated = true;
-              return { ...record, indentNo };
-            }
-            break;
-          }
-        }
-      }
-      return record;
-    });
-
-    if (updated) {
+  return (
+    <div>
+      <h2>VSRI Module</h2>
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
+        {VSRI_MODULE_FIELDS.map((field) => (
+          <div key={field.key} style={{ flex: '1 1 200px', minWidth: 180 }}>
+            <label style={{ display: 'block', marginBottom: 4 }}>{field.label}</label>
+            {field.key === 'itemName' && itemNames.length > 0 ? (
+              <select
+                name="itemName"
+                value={formData.itemName}
+                onChange={handleChange}
+                style={{ width: '100%', padding: 6, borderRadius: 4, border: '1px solid #bbb' }}
+              >
+                <option value="">Select Item Name</option>
+                {itemNames.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type={field.type}
+                name={field.key}
+                value={(itemInput as any)[field.key]}
+                onChange={handleChange}
+                style={{ width: '100%', padding: 6, borderRadius: 4, border: '1px solid #bbb' }}
+              />
+            )}
+          </div>
+        ))}
+        <button type="submit" style={{ padding: '10px 24px', background: '#1a237e', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 500, marginTop: 24 }}>
+          {editIdx !== null ? 'Update' : 'Add'}
+        </button>
+      </form>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', border: '1px solid #ccc', fontSize: 12 }}>
+          <thead>
+            <tr style={{ background: '#fff', borderBottom: '2px solid #333', fontWeight: 'bold' }}>
+              {VSRI_MODULE_FIELDS.map((field) => (
+                <th key={field.key} style={{ padding: '10px 8px', textAlign: 'left', borderRight: '1px solid #ccc' }}>{field.label}</th>
+              ))}
+              <th style={{ padding: '10px 8px', textAlign: 'center' }}>Edit</th>
+              <th style={{ padding: '10px 8px', textAlign: 'center' }}>Delete</th>
+            </tr>
+          </thead>
+          <tbody>
+            {records.map((rec, idx) => (
+              <tr key={rec.id} style={{ borderBottom: '1px solid #ccc', background: '#fff' }}>
+                {VSRI_MODULE_FIELDS.map((field) => {
+                  const cellCommon: React.CSSProperties = { padding: '10px 8px', borderRight: '1px solid #ccc' };
+                  if (field.key === 'dcNo') {
+                    return <td key={field.key} style={cellCommon}>{rec.dcNo}</td>;
+                  }
+                  if (field.key === 'vendorBatchNo') {
+                    const vendorBatchNo = rec.vendorBatchNo || getVendorBatchNoForPO(rec.poNo) || '';
+                    return <td key={field.key} style={cellCommon}>{vendorBatchNo}</td>;
+                  }
+                  return <td key={field.key} style={cellCommon}>{(rec as any)[field.key]}</td>;
+                })}
+                <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                  <button
+                    style={{
+                      background: '#1976d2',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 2,
+                      padding: '4px 8px',
+                      cursor: 'pointer',
+                      fontSize: 11
+                    }}
+                    onClick={() => handleEdit(idx)}
+                  >
+                    Edit
+                  </button>
+                </td>
+                <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                  <button
+                    onClick={() => {
+                      const toDelete = records[idx];
+                      if (!toDelete) {
+                        console.error('[VSIR] No record found to delete at index', idx);
+                        return;
+                      }
+                      console.log('[VSIR] Deleting record:', toDelete);
+                      if (userUid && toDelete && toDelete.id) {
+                        deleteVSIRRecord(userUid, String(toDelete.id))
+                          .then(() => {
+                            console.log('[VSIR] Successfully deleted from Firestore:', toDelete.id);
+                            setRecords(prev => prev.filter(r => r.id !== toDelete.id));
+                          })
+                          .catch((e) => {
+                            console.error('[VSIR] deleteVSIRRecord failed:', e, 'Record ID:', toDelete.id);
+                            alert('Failed to delete record from Firestore. Please check your permissions and network.\nError: ' + (e && e.message ? e.message : e));
+                          });
+                      } else {
+                        setRecords(prev => prev.filter(r => r.id !== toDelete.id));
+                      }
+                    }}
+                    style={{
+                      background: '#e53935',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 2,
+                      padding: '4px 8px',
+                      cursor: 'pointer',
+                      fontSize: 11
+                    }}
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
       setRecords(updatedRecords);
       // Persist the auto-filled indentNo to Firestore
       if (userUid) {
