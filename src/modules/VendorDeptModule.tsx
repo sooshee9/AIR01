@@ -333,7 +333,23 @@ const VendorDeptModule: React.FC = () => {
 		console.debug('[VendorDeptModule] Setting up vendorDepts subscription for userId:', userUid);
 		unsub = subscribeVendorDepts(userUid, (docs) => {
 			console.info('[VendorDeptModule] ✓ Loaded', docs.length, 'vendor dept orders from Firebase');
-			setOrders(docs);
+			// Sanitize items on load: clear okQty and normalize negative qty
+			const sanitized = docs.map((order: any) => {
+				if (!Array.isArray(order.items)) return order;
+				return {
+					...order,
+					items: order.items.map((it: any) => {
+						const qtyNum = Number(it.qty);
+						return {
+							...it,
+							okQty: undefined, // never display okQty in form
+							qty: (Number.isFinite(qtyNum) && qtyNum < 0) ? undefined : it.qty
+						};
+					})
+				};
+			});
+			console.debug('[VendorDeptModule] Sanitized orders - cleared okQty and negative qty');
+			setOrders(sanitized);
 		});
 		return () => {
 			if (unsub) unsub();
@@ -963,11 +979,14 @@ useEffect(() => {
 						console.log('[VendorDeptModule][AutoFill] PSIR match:', match);
 						if (match) {
 							// Do NOT auto-fill receivedQty from PSIR -- keep Received Qty manual
+							const purchaseQty = getPurchaseQty(newOrder.materialPurchasePoNo, match.itemCode, purchaseOrders, purchaseData);
+							// Sanitize: ignore negative qty, fall back to undefined
+							const safeQty = (purchaseQty !== undefined && purchaseQty < 0) ? undefined : (purchaseQty || match.qtyReceived);
 							setItemInput(prev => ({
 								...prev,
-								qty: getPurchaseQty(newOrder.materialPurchasePoNo, match.itemCode, purchaseOrders, purchaseData) || match.qtyReceived || prev.qty,
+								qty: safeQty || prev.qty,
 								indentStatus: (function(){ const p = getIndentStatusFromPurchase(newOrder.materialPurchasePoNo, match.itemCode || prev.itemCode, match.indentNo || psir.indentNo || prev.materialIssueNo || '', purchaseData, purchaseOrders); if (p) return p && p.toUpperCase ? p.toUpperCase() : String(p); return (prev.indentStatus || '').toUpperCase(); })(),
-								okQty: match.okQty || 0,
+								okQty: undefined, // never auto-fill okQty
 								reworkQty: prev.reworkQty, // PSIR may not have reworkQty
 								rejectedQty: match.rejectQty || 0,
 								grnNo: match.grnNo || psir.grnNo || '',
@@ -994,12 +1013,16 @@ useEffect(() => {
 					const match = po.items.find((it: any) => norm(it.itemCode || it.Code) === targetCode);
 					console.log('[VendorDeptModule][AutoFill] Purchase item match (normalized):', match);
 					if (match) {
-						const inferredQty = getPurchaseQty(newOrder.materialPurchasePoNo, match.itemCode, purchaseOrders, purchaseData) || Number(match.purchaseQty ?? match.receivedQty ?? match.qty ?? 0);
+						const purchaseQty = getPurchaseQty(newOrder.materialPurchasePoNo, match.itemCode, purchaseOrders, purchaseData);
+						// Sanitize: ignore negative qty, fall back to match fields
+						const safeQty = (purchaseQty !== undefined && purchaseQty < 0) ? undefined : (purchaseQty || Number(match.purchaseQty ?? match.receivedQty ?? match.qty ?? 0));
+						// Only use safeQty if it's positive
+						const finalQty = (safeQty !== undefined && safeQty > 0) ? safeQty : undefined;
 						// Do NOT auto-fill receivedQty here — it must be entered manually
 						setItemInput(prev => ({
 							...prev,
-							qty: inferredQty,
-							okQty: match.okQty || 0,
+							qty: finalQty || prev.qty,
+							okQty: undefined, // never auto-fill okQty
 							reworkQty: match.reworkQty || 0,
 							rejectedQty: match.rejectedQty || 0,
 							grnNo: match.grnNo || '',
