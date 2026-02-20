@@ -280,40 +280,6 @@ const VSIRModule: React.FC = () => {
     }
   }, [records, isInitialized]);
 
-  // Auto-calculate OK Qty for existing records if not set
-  useEffect(() => {
-    if (!userUid || records.length === 0) return;
-    
-    let needsUpdate = false;
-    const updatedRecords = records.map(record => {
-      const qtyReceived = record.qtyReceived || 0;
-      const reworkQty = record.reworkQty || 0;
-      const rejectQty = record.rejectQty || 0;
-      const calculatedOkQty = Math.max(0, qtyReceived - reworkQty - rejectQty);
-      
-      if (record.okQty !== calculatedOkQty) {
-        needsUpdate = true;
-        return { ...record, okQty: calculatedOkQty };
-      }
-      return record;
-    });
-    
-    if (needsUpdate) {
-      console.log('[VSIR] Updating records with calculated okQty');
-      setRecords(updatedRecords);
-      // Persist updates to Firestore
-      updatedRecords.forEach(async (record) => {
-        if (record.id && userUid) {
-          try {
-            await updateVSIRRecord(userUid, record.id, record);
-          } catch (err) {
-            console.error('[VSIR] Error updating record with calculated okQty:', err);
-          }
-        }
-      });
-    }
-  }, [records, userUid]);
-
   // Sync vendor batch from VendorDept on update
   useEffect(() => {
     const syncVendorBatchFromDept = () => {
@@ -676,19 +642,6 @@ const VSIRModule: React.FC = () => {
       }
     } catch {}
   }, [itemInput.itemCode]);
-
-  // Auto-calculate OK Qty = Qty Received - Rework Qty - Reject Qty
-  useEffect(() => {
-    const qtyReceived = itemInput.qtyReceived || 0;
-    const reworkQty = itemInput.reworkQty || 0;
-    const rejectQty = itemInput.rejectQty || 0;
-    const calculatedOkQty = Math.max(0, qtyReceived - reworkQty - rejectQty);
-    
-    setItemInput(prev => ({
-      ...prev,
-      okQty: calculatedOkQty,
-    }));
-  }, [itemInput.qtyReceived, itemInput.reworkQty, itemInput.rejectQty]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
