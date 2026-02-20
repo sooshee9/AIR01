@@ -313,6 +313,7 @@ const VSIRModule: React.FC = () => {
           return;
         }
         console.log('[VSIR-DEBUG] VendorDept records:', vendorDepts.map((vd: any) => ({ po: vd.materialPurchasePoNo, vendorBatchNo: vd.vendorBatchNo })));
+        console.log('[VSIR-DEBUG] Raw VendorDept records:', vendorDepts);
         console.log('[VSIR-DEBUG] Current VSIR records:', records.map(r => ({ poNo: r.poNo, vendorBatchNo: r.vendorBatchNo, invoiceDcNo: r.invoiceDcNo, itemCode: r.itemCode })));
         
         let updated = false;
@@ -330,12 +331,14 @@ const VSIRModule: React.FC = () => {
               return poMatch;
             });
             
+            console.log(`[VSIR-DEBUG]   Match result:`, match ? { po: match.materialPurchasePoNo, vendorBatchNo: match.vendorBatchNo } : 'null');
+            
             if (match?.vendorBatchNo) {
               console.log(`[VSIR-DEBUG] ✓ SYNC: Found match for PO ${record.poNo}, syncing vendorBatchNo: ${match.vendorBatchNo}`);
               updated = true;
               return { ...record, vendorBatchNo: match.vendorBatchNo };
             } else {
-              console.log(`[VSIR-DEBUG] ✗ No matching VendorDept record found for PO ${record.poNo}`);
+              console.log(`[VSIR-DEBUG] ✗ No matching VendorDept record found for PO ${record.poNo} (match.vendorBatchNo is falsy)`);
             }
           }
           return record;
@@ -764,6 +767,7 @@ const VSIRModule: React.FC = () => {
     e.stopPropagation();
 
     console.log('[VSIR] handleSubmit called with itemInput:', itemInput);
+    console.log('[VSIR] Current form state before validation:', itemInput);
 
     if (!itemInput.receivedDate || !itemInput.poNo || !itemInput.itemCode || !itemInput.itemName || itemInput.qtyReceived === 0) {
       console.log('[VSIR] Validation failed - missing required fields');
@@ -814,11 +818,13 @@ const VSIRModule: React.FC = () => {
       console.error('[VSIR] Error during save:', e);
       alert('Error: ' + String(e));
     } finally {
-      console.log('[VSIR] Clearing form after save attempt');
+      console.log('[VSIR] Save attempt completed');
       setIsSubmitting(false);
-      setItemInput(initialItemInput);
+      // Don't clear the form - keep values for user convenience
+      // setItemInput(initialItemInput);
       setEditIdx(null);
-      setLastSavedRecord(null);
+      // Keep the last saved record for display
+      // setLastSavedRecord(null);
       if (formRef.current) {
         formRef.current.reset = () => {};
       }
