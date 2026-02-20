@@ -7,6 +7,8 @@ import {
   addInHouseIssue,
   updateInHouseIssue,
   deleteInHouseIssue,
+  subscribePsirs,
+  subscribeVSIRRecords,
 } from '../utils/firestoreServices';
 
 interface InHouseIssueItem {
@@ -115,6 +117,8 @@ const InHouseIssueModule: React.FC = () => {
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [userUid, setUserUid] = useState<string | null>(null);
   const [editIssueIdx, setEditIssueIdx] = useState<number | null>(null);
+  const [psirData, setPsirData] = useState<any[]>([]);
+  const [vsirData, setVsirData] = useState<any[]>([]);
 
   // Auth state
   useEffect(() => {
@@ -176,7 +180,23 @@ const InHouseIssueModule: React.FC = () => {
       setIssues(docs);
     });
 
-    return () => unsub();
+    // Subscribe to PSIR data
+    const unsubPsir = subscribePsirs(userUid, (docs) => {
+      console.log('[InHouseIssueModule] ✓ Received PSIR data from Firestore:', docs.length, 'items');
+      setPsirData(docs || []);
+    });
+
+    // Subscribe to VSIR data
+    const unsubVsir = subscribeVSIRRecords(userUid, (docs) => {
+      console.log('[InHouseIssueModule] ✓ Received VSIR data from Firestore:', docs.length, 'items');
+      setVsirData(docs || []);
+    });
+
+    return () => {
+      unsub();
+      unsubPsir();
+      unsubVsir();
+    };
   }, [userUid]);
 
   // Helper: Get batch numbers for selected vendor
@@ -216,22 +236,16 @@ const InHouseIssueModule: React.FC = () => {
       
       console.log('[InHouse] 🔍 Searching VSIR for item code:', itemCode);
       
-      const vsirDataRaw = localStorage.getItem('vsri-records');
-      if (!vsirDataRaw) {
-        console.log('[InHouse] ❌ No VSIR data found in localStorage');
-        return [];
-      }
+      const vsirDataLocal = vsirData;
+      console.log('[InHouse] 📊 Loaded VSIR records count:', Array.isArray(vsirDataLocal) ? vsirDataLocal.length : 'not-array');
       
-      const vsirData = JSON.parse(vsirDataRaw);
-      console.log('[InHouse] 📊 Loaded VSIR records count:', Array.isArray(vsirData) ? vsirData.length : 'not-array');
-      
-      if (!Array.isArray(vsirData)) {
-        console.log('[InHouse] ❌ VSIR data is not an array');
+      if (!Array.isArray(vsirDataLocal) || vsirDataLocal.length === 0) {
+        console.log('[InHouse] ❌ No VSIR data available');
         return [];
       }
       
       const batchNos = new Set<string>();
-      vsirData.forEach((record: any, idx: number) => {
+      vsirDataLocal.forEach((record: any, idx: number) => {
         console.log(`[InHouse] 📝 Record ${idx}: itemCode=${record.itemCode}, Code=${record.Code}, vendorBatchNo=${record.vendorBatchNo}`);
         // Check if this VSIR record contains the item and has vendorBatchNo
         if ((record.itemCode && record.itemCode === itemCode) || (record.Code && record.Code === itemCode)) {
@@ -261,20 +275,14 @@ const InHouseIssueModule: React.FC = () => {
         return [];
       }
       
-      const psirDataRaw = localStorage.getItem('psirData');
-      if (!psirDataRaw) {
-        console.log('[InHouse] No PSIR data found in localStorage');
-        return [];
-      }
-      
-      const psirData = JSON.parse(psirDataRaw);
-      if (!Array.isArray(psirData)) {
-        console.log('[InHouse] PSIR data is not an array');
+      const psirDataLocal = psirData;
+      if (!Array.isArray(psirDataLocal) || psirDataLocal.length === 0) {
+        console.log('[InHouse] No PSIR data available');
         return [];
       }
       
       const batchNos = new Set<string>();
-      psirData.forEach((psir: any) => {
+      psirDataLocal.forEach((psir: any) => {
         // Check if this PSIR record contains the item
         const hasItem = Array.isArray(psir.items) && 
           psir.items.some((item: any) => 
@@ -351,7 +359,7 @@ const InHouseIssueModule: React.FC = () => {
       setPsirBatchNos([]);
       setVsirBatchNos([]);
     }
-  }, [itemInput.transactionType, itemInput.itemCode]);
+  }, [itemInput.transactionType, itemInput.itemCode, psirData, vsirData]);
 
   // Update vendor batch numbers when vendor selection changes
   useEffect(() => {
@@ -462,22 +470,16 @@ const InHouseIssueModule: React.FC = () => {
     try {
       if (itemInput.transactionType === 'Purchase') {
         // Get from PSIR
-        const psirDataRaw = localStorage.getItem('psirData');
-        if (!psirDataRaw) {
-          console.log('[InHouse] No PSIR data found in localStorage');
+        const psirDataLocal = psirData;
+        console.log('[InHouse] PSIR Data loaded:', psirDataLocal);
+        if (!Array.isArray(psirDataLocal) || psirDataLocal.length === 0) {
+          console.log('[InHouse] No PSIR data available');
           return;
         }
         
-        const psirData = JSON.parse(psirDataRaw);
-        console.log('[InHouse] PSIR Data loaded:', psirData);
-        if (!Array.isArray(psirData)) {
-          console.log('[InHouse] PSIR data is not an array');
-          return;
-        }
-        
-        console.log('[InHouse] Searching through', psirData.length, 'PSIR records');
-        for (let i = 0; i < psirData.length; i++) {
-          const psir = psirData[i];
+        console.log('[InHouse] Searching through', psirDataLocal.length, 'PSIR records');
+        for (let i = 0; i < psirDataLocal.length; i++) {
+          const psir = psirDataLocal[i];
           console.log(`[InHouse] Record ${i}: batchNo="${psir.batchNo}" (looking for "${itemInput.batchNo}")`);
           
           if (psir.batchNo && psir.batchNo.toString().trim() === itemInput.batchNo.toString().trim()) {
@@ -497,22 +499,16 @@ const InHouseIssueModule: React.FC = () => {
         console.log('[InHouse] ✗ No matching PSIR batch found');
       } else if (itemInput.transactionType === 'Vendor') {
         // Get from VSIR
-        const vsirDataRaw = localStorage.getItem('vsri-records');
-        if (!vsirDataRaw) {
-          console.log('[InHouse] No VSIR data found in localStorage');
+        const vsirDataLocal = vsirData;
+        console.log('[InHouse] VSIR Data loaded:', vsirDataLocal);
+        if (!Array.isArray(vsirDataLocal) || vsirDataLocal.length === 0) {
+          console.log('[InHouse] No VSIR data available');
           return;
         }
         
-        const vsirData = JSON.parse(vsirDataRaw);
-        console.log('[InHouse] VSIR Data loaded:', vsirData);
-        if (!Array.isArray(vsirData)) {
-          console.log('[InHouse] VSIR data is not an array');
-          return;
-        }
-        
-        console.log('[InHouse] Searching through', vsirData.length, 'VSIR records');
-        for (let i = 0; i < vsirData.length; i++) {
-          const vsir = vsirData[i];
+        console.log('[InHouse] Searching through', vsirDataLocal.length, 'VSIR records');
+        for (let i = 0; i < vsirDataLocal.length; i++) {
+          const vsir = vsirDataLocal[i];
           console.log(`[InHouse] Record ${i}: vendorBatchNo="${vsir.vendorBatchNo}" (looking for "${itemInput.batchNo}")`);
           
           if (vsir.vendorBatchNo && vsir.vendorBatchNo.toString().trim() === itemInput.batchNo.toString().trim()) {
@@ -534,7 +530,7 @@ const InHouseIssueModule: React.FC = () => {
     } catch (e) {
       console.error('Error auto-filling batch details:', e);
     }
-  }, [itemInput.batchNo, itemInput.transactionType]);
+  }, [itemInput.batchNo, itemInput.transactionType, psirData, vsirData]);
 
   // Auto-fill Indent No, OA No, PO No for all saved issues based on their items' batch numbers
   useEffect(() => {
@@ -890,13 +886,10 @@ const InHouseIssueModule: React.FC = () => {
   // Get OK Qty for a batch from PSIR
   const getPsirOkQtyForBatch = (batchNo: string, itemCode: string): number => {
     try {
-      const psirDataRaw = localStorage.getItem('psirData');
-      if (!psirDataRaw) return 0;
+      const psirDataLocal = psirData;
+      if (!Array.isArray(psirDataLocal)) return 0;
       
-      const psirData = JSON.parse(psirDataRaw);
-      if (!Array.isArray(psirData)) return 0;
-      
-      for (const psir of psirData) {
+      for (const psir of psirDataLocal) {
         if (psir.batchNo === batchNo && Array.isArray(psir.items)) {
           const item = psir.items.find((it: any) => it.itemCode === itemCode);
           if (item) {
@@ -914,13 +907,10 @@ const InHouseIssueModule: React.FC = () => {
   // Get OK Qty for a batch from VSIR
   const getVsirOkQtyForBatch = (batchNo: string, itemCode: string): number => {
     try {
-      const vsirDataRaw = localStorage.getItem('vsri-records');
-      if (!vsirDataRaw) return 0;
+      const vsirDataLocal = vsirData;
+      if (!Array.isArray(vsirDataLocal)) return 0;
       
-      const vsirData = JSON.parse(vsirDataRaw);
-      if (!Array.isArray(vsirData)) return 0;
-      
-      for (const vsir of vsirData) {
+      for (const vsir of vsirDataLocal) {
         if (vsir.vendorBatchNo === batchNo && vsir.itemCode === itemCode) {
           return vsir.okQty || 0;
         }
