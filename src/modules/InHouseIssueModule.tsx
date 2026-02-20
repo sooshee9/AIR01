@@ -7,9 +7,9 @@ import {
   addInHouseIssue,
   updateInHouseIssue,
   deleteInHouseIssue,
-  subscribePsirs,
   subscribeVSIRRecords,
 } from '../utils/firestoreServices';
+import { subscribePsirs } from '../utils/psirService';
 
 interface InHouseIssueItem {
   itemName: string;
@@ -181,7 +181,7 @@ const InHouseIssueModule: React.FC = () => {
     });
 
     // Subscribe to PSIR data
-    const unsubPsir = subscribePsirs(userUid, (docs) => {
+    const unsubPsir = subscribePsirs(userUid, (docs: any[]) => {
       console.log('[InHouseIssueModule] ✓ Received PSIR data from Firestore:', docs.length, 'items');
       setPsirData(docs || []);
     });
