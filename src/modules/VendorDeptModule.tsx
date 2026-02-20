@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import bus from '../utils/eventBus';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase';
-import { getPurchaseOrders, getPurchaseData, subscribeVendorDepts, addVendorDept, updateVendorDept, deleteVendorDept } from '../utils/firestoreServices';
+import { getPurchaseOrders, getPurchaseData, subscribeVendorDepts, addVendorDept, updateVendorDept, deleteVendorDept, getVSIRRecords } from '../utils/firestoreServices';
 import { subscribeVSIRRecords } from '../utils/firestoreServices';
 import { subscribePsirs } from '../utils/psirService';
 
@@ -368,6 +368,17 @@ const VendorDeptModule: React.FC = () => {
 				if (Array.isArray(purchaseDataData)) {
 					setPurchaseData(purchaseDataData);
 					console.debug('[VendorDeptModule] Loaded', purchaseDataData.length, 'purchase data records');
+				}
+
+				// Also load VSIR records once during initial load to ensure availability
+				try {
+					const vsirList = await getVSIRRecords(userUid);
+					if (Array.isArray(vsirList)) {
+						setVsirRecords(vsirList);
+						console.debug('[VendorDeptModule] getVSIRRecords loaded', vsirList.length, 'records');
+					}
+				} catch (e) {
+					console.error('[VendorDeptModule] getVSIRRecords failed:', e);
 				}
 			} catch (e) {
 				console.error('[VendorDeptModule] Error loading purchase data:', e);
