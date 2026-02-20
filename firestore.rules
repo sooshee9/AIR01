@@ -1,0 +1,27 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Allow authenticated users to read/write to their own user document
+    match /users/{userId} {
+      allow read, write: if request.auth.uid == userId;
+      
+      // Allow CRUD operations on all user subcollections
+      match /{collection}/{document=**} {
+        allow read, write: if request.auth.uid == userId;
+      }
+    }
+    
+    // PSIR Collection - Top level, userId-based access
+    match /psirs/{psirId} {
+      allow read: if request.auth.uid == resource.data.userId;
+      allow create: if request.auth.uid == request.resource.data.userId;
+      allow update, delete: if request.auth.uid == resource.data.userId;
+    }
+    
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
