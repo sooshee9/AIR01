@@ -989,9 +989,20 @@ const VSIRModule: React.FC = () => {
     console.log('[VSIR] handleSubmit called with itemInput:', itemInput);
     console.log('[VSIR] Current form state before validation:', itemInput);
 
-    if (!itemInput.receivedDate || !itemInput.poNo || !itemInput.itemCode || !itemInput.itemName || itemInput.qtyReceived === 0) {
+    // For updates, be more lenient with validation
+    const isUpdate = editIdx !== null;
+    const requiredFieldsCheck = !itemInput.poNo || !itemInput.itemCode || !itemInput.itemName;
+    const dateQtyCheck = isUpdate ? false : (!itemInput.receivedDate || itemInput.qtyReceived === 0);
+
+    if (requiredFieldsCheck || dateQtyCheck) {
       console.log('[VSIR] Validation failed - missing required fields');
-      alert('All required fields must be filled');
+      const missing = [];
+      if (!itemInput.poNo) missing.push('PO No');
+      if (!itemInput.itemCode) missing.push('Item Code');
+      if (!itemInput.itemName) missing.push('Item Name');
+      if (!isUpdate && !itemInput.receivedDate) missing.push('Received Date');
+      if (!isUpdate && itemInput.qtyReceived === 0) missing.push('Qty Received');
+      alert(`Required fields missing: ${missing.join(', ')}`);
       return;
     }
 
@@ -1006,6 +1017,12 @@ const VSIRModule: React.FC = () => {
 
     try {
       const finalItemInput = { ...itemInput };
+      
+      // Auto-fill receivedDate if empty
+      if (!finalItemInput.receivedDate) {
+        finalItemInput.receivedDate = new Date().toISOString().split('T')[0];
+        console.log('[VSIR] Auto-filled receivedDate:', finalItemInput.receivedDate);
+      }
       const hasInvoiceDcNo = finalItemInput.invoiceDcNo && String(finalItemInput.invoiceDcNo).trim();
       if (hasInvoiceDcNo && !finalItemInput.vendorBatchNo?.trim() && finalItemInput.poNo) {
         let vb = getVendorBatchNoForPO(finalItemInput.poNo);
