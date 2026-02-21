@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth } from '../firebase';
 import { subscribePsirs } from '../utils/psirService';
 import { subscribeVSIRRecords, addVSIRRecord, updateVSIRRecord, deleteVSIRRecord, subscribeVendorDepts, getItemMaster, getVendorIssues, subscribePurchaseData, subscribePurchaseOrders, updateVendorDept } from '../utils/firestoreServices';
@@ -44,6 +44,18 @@ interface VendorDeptItem {
   remarks: string;
 }
 
+interface VendorDeptOrder {
+  id?: string;
+  orderPlaceDate: string;
+  materialPurchasePoNo: string;
+  oaNo: string;
+  batchNo: string;
+  vendorBatchNo: string;
+  dcNo: string;
+  vendorName: string;
+  items: VendorDeptItem[];
+}
+
 interface Field {
   key: keyof Omit<VSRIRecord, 'id'>;
   label: string;
@@ -74,7 +86,7 @@ const VSIRModule: React.FC = () => {
   const [itemNames, setItemNames] = useState<string[]>([]);
   const [itemMaster, setItemMaster] = useState<{ itemName: string; itemCode: string }[]>([]);
   const [editIdx, setEditIdx] = useState<number | null>(null);
-  const [vendorDeptOrders, setVendorDeptOrders] = useState<any[]>([]);
+  const [vendorDeptOrders, setVendorDeptOrders] = useState<VendorDeptOrder[]>([]);
   const [vendorIssues, setVendorIssues] = useState<any[]>([]);
   const [purchaseData, setPurchaseData] = useState<any[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
@@ -266,7 +278,7 @@ const VSIRModule: React.FC = () => {
 
     // Subscribe to Firestore and load master data when authenticated
     useEffect(() => {
-      const unsubAuth = onAuthStateChanged(auth, (u) => {
+      const unsubAuth = onAuthStateChanged(auth, (u: User | null) => {
         const uid = u ? u.uid : null;
         setUserUid(uid);
         if (!uid) return;

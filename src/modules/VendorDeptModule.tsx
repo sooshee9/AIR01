@@ -242,30 +242,27 @@ const getVendorBatchNoFromVSIR = (poNo: any, vsirRecords?: any[]): string => {
 		console.log('[VendorDept] Looking for vendorBatchNo for PO:', poNoNormalized);
 		
 		console.log('[VendorDept] VSIR data exists:', !!vsirRecords);
-		if (!vsirRecords) {
-			console.log('[VendorDept] No VSIR data found');
+		// Wait for VSIR data to be available
+		if (!vsirRecords || !Array.isArray(vsirRecords) || vsirRecords.length === 0) {
+			console.log('[VendorDept] No VSIR data found or not loaded yet');
+			// Fallback diagnostics
+			if (window && typeof window !== 'undefined') {
+				const userUid = (window as any).userUid || 'unknown';
+				console.log('[VendorDept][DIAGNOSTIC] userUid:', userUid);
+				if ((window as any).vsirDebug) {
+					(window as any).vsirDebug();
+				} else {
+					console.log('[VendorDept][DIAGNOSTIC] No vsirDebug function available');
+				}
+			}
 			return '';
 		}
-		// vsirRecords is already an array
-		if (!Array.isArray(vsirRecords)) {
-			console.log('[VendorDept] VSIR data is not an array');
-			// Try to handle as array anyway
-		}
-		
-		console.log('[VendorDept] VSIR records count:', vsirRecords.length);
-		if (vsirRecords.length > 0) {
-			console.log('[VendorDept] First VSIR record structure:', JSON.stringify(vsirRecords[0]));
-			console.log('[VendorDept] All VSIR POs:', vsirRecords.map((r: any) => r.poNo).join(', '));
-			console.log('[VendorDept] Looking for PO match with:', poNoNormalized);
-		}
-		
 		// Find first VSIR record matching this PO with a vendorBatchNo (normalized comparison)
 		const match = vsirRecords.find((r: any) => {
 			const rPoNo = String(r.poNo || '').trim();
 			const hasVendorBatchNo = r.vendorBatchNo && String(r.vendorBatchNo).trim();
 			return rPoNo === poNoNormalized && hasVendorBatchNo;
 		});
-		
 		if (match) {
 			console.log('[VendorDept] ✓ Match found! vendorBatchNo:', match.vendorBatchNo);
 			return match.vendorBatchNo;
@@ -295,7 +292,7 @@ const getPSIRDataByPO = (poNo: string | undefined, psirData?: any[]): any => {
 
 const VendorDeptModule: React.FC = () => {
 	// Debug state for OK Qty auto-fill (must be declared here for all logic/JSX)
-	const [debugOkQty, setDebugOkQty] = useState<any>(null);
+	// const [debugOkQty, setDebugOkQty] = useState<any>(null);
 
 	// Declare newOrder state before any useEffect that uses it
 	const [newOrder, setNewOrder] = useState<VendorDeptOrder>({
@@ -528,96 +525,66 @@ const VendorDeptModule: React.FC = () => {
 
 	// Auto-fill Received, OK, Rework, and Rejected quantities from VSIR
 	useEffect(() => {
+		// Wait for VSIR data before auto-fill
 		if (!newOrder.materialPurchasePoNo || !itemInput.itemCode) return;
-		
+		if (!vsirRecords || !Array.isArray(vsirRecords) || vsirRecords.length === 0) {
+			console.debug('[VendorDeptModule][AutoFill] Waiting for VSIR records to load');
+			return;
+		}
 		try {
-			if (!vsirRecords) {
-				console.debug('[VendorDeptModule][AutoFill] No VSIR records found');
-				return;
-			}
-			
-			if (!Array.isArray(vsirRecords)) return;
-			
 			// Find matching VSIR record for this PO and item (robust: trim, uppercase)
 			const norm = (v: any) => (v === undefined || v === null) ? '' : String(v).trim().toUpperCase();
 			const matchingVSIR = vsirRecords.find((vsir: any) =>
 				norm(vsir.poNo) === norm(newOrder.materialPurchasePoNo) &&
 				norm(vsir.itemCode) === norm(itemInput.itemCode)
 			);
-			
-						if (matchingVSIR) {
-								const receivedQty = matchingVSIR.qtyReceived || 0;
-								let okQty = 0;
-								let debugReason = '';
-								if (typeof matchingVSIR.okQty === 'number' && matchingVSIR.okQty > 0) {
-									okQty = matchingVSIR.okQty;
-									debugReason = 'Used okQty from VSIR';
-								} else if (typeof matchingVSIR.qtyReceived === 'number' && matchingVSIR.qtyReceived > 0) {
-									okQty = matchingVSIR.qtyReceived;
-									debugReason = 'okQty missing, used qtyReceived from VSIR';
-								} else {
-									debugReason = 'No okQty or qtyReceived found in VSIR';
-								}
-								const reworkQty = matchingVSIR.reworkQty || 0;
-								const rejectedQty = matchingVSIR.rejectQty || 0;
-								const grnNo = matchingVSIR.grnNo || '';
-                
-								setDebugOkQty({
-									poNo: newOrder.materialPurchasePoNo,
-									itemCode: itemInput.itemCode,
-									matchingVSIR,
-									receivedQty,
-									okQty,
-									reworkQty,
-									rejectedQty,
-									grnNo,
-									debugReason
-								});
-                
-								setItemInput(prev => ({
-										...prev,
-										receivedQty,
-										okQty, // Auto-fill OK Qty from VSIR or fallback to qtyReceived
-										reworkQty,
-										rejectedQty,
-										grnNo
-								}));
-						} else {
-								setDebugOkQty({
-									poNo: newOrder.materialPurchasePoNo,
-									itemCode: itemInput.itemCode,
-									matchingVSIR: null,
-									debugReason: 'No matching VSIR record found'
-								});
-						}
-			{/* Debug Panel for OK Qty auto-fill */}
-			{debugOkQty && (
-				<div style={{ margin: '16px 0', padding: 12, background: '#e3f2fd', border: '2px solid #1976d2', borderRadius: 4 }}>
-					<h4 style={{ margin: '0 0 8px 0', color: '#1976d2' }}>🛠️ OK Qty Auto-Fill Debug Panel</h4>
-					<div style={{ fontSize: 13, marginBottom: 6 }}>
-						<strong>PO No:</strong> {debugOkQty.poNo} &nbsp; <strong>Item Code:</strong> {debugOkQty.itemCode}
-					</div>
-					<div style={{ fontSize: 13, marginBottom: 6 }}>
-						<strong>VSIR Match:</strong> {debugOkQty.matchingVSIR ? '✅ Found' : '❌ Not Found'}
-					</div>
-					<div style={{ fontSize: 13, marginBottom: 6 }}>
-						<strong>Auto-filled OK Qty:</strong> {debugOkQty.okQty ?? '—'}
-					</div>
-					<div style={{ fontSize: 13, marginBottom: 6 }}>
-						<strong>Reason:</strong> {debugOkQty.debugReason}
-					</div>
-					{debugOkQty.matchingVSIR && (
-						<details style={{ fontSize: 12, marginTop: 6 }}>
-							<summary>Show VSIR Record</summary>
-							<pre style={{ background: '#f5f5f5', padding: 6, borderRadius: 3, fontSize: 11, margin: 0 }}>{JSON.stringify(debugOkQty.matchingVSIR, null, 2)}</pre>
-						</details>
-					)}
-				</div>
-			)}
+			if (matchingVSIR) {
+				const receivedQty = matchingVSIR.qtyReceived || 0;
+				let okQty = 0;
+				// let debugReason = '';
+				if (typeof matchingVSIR.okQty === 'number' && matchingVSIR.okQty > 0) {
+					okQty = matchingVSIR.okQty;
+					// debugReason = 'Used okQty from VSIR';
+				} else if (typeof matchingVSIR.qtyReceived === 'number' && matchingVSIR.qtyReceived > 0) {
+					okQty = matchingVSIR.qtyReceived;
+					// debugReason = 'okQty missing, used qtyReceived from VSIR';
+				} else {
+					// debugReason = 'No okQty or qtyReceived found in VSIR';
+				}
+				const reworkQty = matchingVSIR.reworkQty || 0;
+				const rejectedQty = matchingVSIR.rejectQty || 0;
+				const grnNo = matchingVSIR.grnNo || '';
+				// setDebugOkQty({
+				// 	poNo: newOrder.materialPurchasePoNo,
+				// 	itemCode: itemInput.itemCode,
+				// 	matchingVSIR,
+				// 	receivedQty,
+				// 	okQty,
+				// 	reworkQty,
+				// 	rejectedQty,
+				// 	grnNo,
+				// 	debugReason
+				// });
+				setItemInput(prev => ({
+					...prev,
+					receivedQty,
+					okQty, // Auto-fill OK Qty from VSIR or fallback to qtyReceived
+					reworkQty,
+					rejectedQty,
+					grnNo
+				}));
+			} else {
+				// setDebugOkQty({
+				// 	poNo: newOrder.materialPurchasePoNo,
+				// 	itemCode: itemInput.itemCode,
+				// 	matchingVSIR: null,
+				// 	debugReason: 'No matching VSIR record found'
+				// });
+			}
 		} catch (e) {
 			console.error('[VendorDeptModule][AutoFill] Error reading VSIR data:', e);
 		}
-	}, [newOrder.materialPurchasePoNo, itemInput.itemCode]);
+	}, [newOrder.materialPurchasePoNo, itemInput.itemCode, vsirRecords]);
 
 	// Auto-populate items from PSIR when PO changes (only if items list is empty)
 	useEffect(() => {
@@ -664,43 +631,46 @@ const VendorDeptModule: React.FC = () => {
 
 	// Sync quantities from VSIR to existing orders (trigger on orders or vsirRecords change)
 	useEffect(() => {
-		if (orders.length === 0) return;
+		// Force sync VSIR data to VendorDept orders whenever VSIR records update, even if orders are already present
 		try {
-			if (!vsirRecords) return;
-			if (!Array.isArray(vsirRecords)) return;
+			if (!orders || !Array.isArray(orders) || orders.length === 0) return;
+			if (!vsirRecords || !Array.isArray(vsirRecords)) return;
 			let updated = false;
 			const updatedOrders = orders.map(order => {
 				const updatedItems = order.items.map((item: any) => {
 					// Find matching VSIR record
-					const matchingVSIR = vsirRecords.find((vsir: any) =>
-						vsir.poNo === order.materialPurchasePoNo &&
-						vsir.itemCode === item.itemCode
-					);
+					const matchingVSIR = vsirRecords.find((vsir: any) => {
+						const norm = (v: any) => (v === undefined || v === null) ? '' : String(v).trim().toUpperCase();
+						return norm(vsir.poNo) === norm(order.materialPurchasePoNo) && norm(vsir.itemCode) === norm(item.itemCode);
+					});
 					if (matchingVSIR) {
 						const newReceivedQty = matchingVSIR.qtyReceived || 0;
-						const newOkQty = matchingVSIR.okQty || 0;
+						let newOkQty = 0;
+						if (typeof matchingVSIR.okQty === 'number' && matchingVSIR.okQty > 0) {
+							newOkQty = matchingVSIR.okQty;
+						} else if (typeof matchingVSIR.qtyReceived === 'number' && matchingVSIR.qtyReceived > 0) {
+							newOkQty = matchingVSIR.qtyReceived;
+						}
 						const newReworkQty = matchingVSIR.reworkQty || 0;
 						const newRejectedQty = matchingVSIR.rejectQty || 0;
 						const newGrnNo = matchingVSIR.grnNo || '';
-						// Only update if values differ
-						if (newReceivedQty !== item.receivedQty || newOkQty !== item.okQty || 
-								newReworkQty !== item.reworkQty || newRejectedQty !== item.rejectedQty ||
-								newGrnNo !== item.grnNo) {
-							console.debug('[VendorDeptModule][Sync] Updating VSIR data for PO:', order.materialPurchasePoNo, 'Item:', item.itemCode);
-							updated = true;
-							return {
-								...item,
-								receivedQty: newReceivedQty,
-								okQty: newOkQty,
-								reworkQty: newReworkQty,
-								rejectedQty: newRejectedQty,
-								grnNo: newGrnNo,
-								// IMPORTANT: DO NOT modify debitNoteOrQtyReturned - it's a manual field
-								debitNoteOrQtyReturned: item.debitNoteOrQtyReturned || ''
-							};
-						}
+						// Always update to ensure latest VSIR values are reflected
+						console.debug('[VendorDeptModule][Sync] Forcing VSIR sync for PO:', order.materialPurchasePoNo, 'Item:', item.itemCode);
+						console.debug('[VendorDeptModule][Sync] VSIR Record Used:', JSON.stringify(matchingVSIR, null, 2));
+						updated = true;
+						return {
+							...item,
+							receivedQty: newReceivedQty,
+							okQty: newOkQty,
+							reworkQty: newReworkQty,
+							rejectedQty: newRejectedQty,
+							grnNo: newGrnNo,
+							debitNoteOrQtyReturned: item.debitNoteOrQtyReturned || ''
+						};
+					} else {
+						console.debug('[VendorDeptModule][Sync] No matching VSIR record for PO:', order.materialPurchasePoNo, 'Item:', item.itemCode);
+						return item;
 					}
-					return item;
 				});
 				return { ...order, items: updatedItems };
 			});
