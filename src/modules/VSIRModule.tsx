@@ -387,7 +387,7 @@ const VSIRModule: React.FC = () => {
       }
     };
 
-    const handleVendorDeptUpdate = (event: any) => {
+    const handleVendorDeptUpdate = () => {
       syncVendorBatchFromDept();
     };
     bus.addEventListener('vendorDept.updated', handleVendorDeptUpdate);
