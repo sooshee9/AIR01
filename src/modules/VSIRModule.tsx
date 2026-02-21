@@ -1030,8 +1030,11 @@ const VSIRModule: React.FC = () => {
         if (!vb) vb = '';
         finalItemInput.vendorBatchNo = vb;
         console.log('[VSIR] Updated vendorBatchNo from PO:', vb);
-      } else if (!hasInvoiceDcNo) {
-        finalItemInput.vendorBatchNo = '';
+      } else {
+        // Preserve any user-entered vendorBatchNo when Invoice/DC is empty.
+        // Previously we cleared vendorBatchNo when invoiceDcNo was missing,
+        // which erased user updates — do not overwrite the field here.
+        console.log('[VSIR] Preserving vendorBatchNo (no auto-clear):', finalItemInput.vendorBatchNo);
       }
 
       console.log('[VSIR] Final data to save:', finalItemInput);
