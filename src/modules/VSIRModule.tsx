@@ -100,108 +100,7 @@ const VSIRModule: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  // Debug panel function
-  const showDebugPanel = () => {
-    console.group('🔍 VSIR DEBUG PANEL');
-    console.log('📅 Timestamp:', new Date().toISOString());
-    console.log('👤 User UID:', userUid);
-    console.log('🔢 Is Initialized:', isInitialized);
-    console.log('📝 Is Submitting:', isSubmitting);
-    console.log('✏️ Edit Index:', editIdx);
-    
-    console.group('📋 Current Form State (itemInput)');
-    Object.entries(itemInput).forEach(([key, value]) => {
-      console.log(`  ${key}:`, value, `(type: ${typeof value})`);
-    });
-    console.groupEnd();
-    
-    console.group('🏭 VendorDept Records');
-    console.log('Count:', vendorDeptOrders.length);
-    vendorDeptOrders.forEach((vd, index) => {
-      console.log(`Record ${index + 1}:`, {
-        id: vd.id,
-        materialPurchasePoNo: vd.materialPurchasePoNo,
-        vendorBatchNo: vd.vendorBatchNo,
-        allKeys: Object.keys(vd),
-        raw: vd
-      });
-    });
-    console.groupEnd();
-    
-    console.group('📦 VSIR Records');
-    console.log('Count:', records.length);
-    records.forEach((record, index) => {
-      console.log(`Record ${index + 1}:`, {
-        id: record.id,
-        poNo: record.poNo,
-        vendorBatchNo: record.vendorBatchNo,
-        invoiceDcNo: record.invoiceDcNo,
-        itemCode: record.itemCode,
-        hasEmptyVendorBatch: !record.vendorBatchNo || !String(record.vendorBatchNo).trim(),
-        raw: record
-      });
-    });
-    console.groupEnd();
-    
-    console.group('🔄 Sync Analysis');
-    let syncableRecords = 0;
-    let syncedRecords = 0;
-    let failedRecords = 0;
-    
-    records.forEach((record, index) => {
-      const hasEmptyVendorBatchNo = !record.vendorBatchNo || !String(record.vendorBatchNo).trim();
-      const hasPoNo = !!record.poNo;
-      const hasInvoiceDcNo = record.invoiceDcNo && String(record.invoiceDcNo).trim();
-      
-      const match = hasPoNo ? vendorDeptOrders.find(vd => 
-        String(vd.materialPurchasePoNo || '').trim() === String(record.poNo || '').trim()
-      ) : null;
-      
-      const canSync = hasEmptyVendorBatchNo && hasPoNo && match?.vendorBatchNo;
-      
-      if (canSync) syncableRecords++;
-      if (!hasEmptyVendorBatchNo) syncedRecords++;
-      if (hasPoNo && !match) failedRecords++;
-      
-      console.log(`Record ${index + 1} (${record.poNo || 'NO-PO'}):`, {
-        hasEmptyVendorBatchNo,
-        hasPoNo,
-        hasInvoiceDcNo,
-        matchFound: !!match,
-        vendorBatchAvailable: match?.vendorBatchNo ? true : false,
-        canSync,
-        status: canSync ? '🔄 READY TO SYNC' : hasEmptyVendorBatchNo ? '⏳ WAITING' : '✅ SYNCED'
-      });
-    });
-    
-    console.log('📊 Sync Summary:', {
-      totalRecords: records.length,
-      syncableRecords,
-      syncedRecords,
-      failedRecords,
-      vendorDeptRecords: vendorDeptOrders.length
-    });
-    console.groupEnd();
-    
-    console.group('⚙️ Module State');
-    console.log('Auto Delete Enabled:', autoDeleteEnabled);
-    console.log('Auto Import Enabled:', autoImportEnabled);
-    console.log('Success Message:', successMessage);
-    console.log('Item Names Count:', itemNames.length);
-    console.log('Item Master Count:', itemMaster.length);
-    console.log('Vendor Issues Count:', vendorIssues.length);
-    console.log('Purchase Data Count:', purchaseData.length);
-    console.log('Purchase Orders Count:', purchaseOrders.length);
-    console.log('PSIR Data Count:', psirData.length);
-    console.groupEnd();
-    
-    console.group('🚨 Recent Errors/Warnings');
-    // Add any recent errors here if tracked
-    console.log('No recent errors tracked');
-    console.groupEnd();
-    
-    console.groupEnd();
-  };
+  // Debug utilities removed for production — keep state minimal
 
   const initialItemInput: Omit<VSRIRecord, 'id'> = {
     receivedDate: '',
@@ -226,27 +125,7 @@ const VSIRModule: React.FC = () => {
   const [itemInput, setItemInput] = useState<Omit<VSRIRecord, 'id'>>(initialItemInput);
   const [lastSavedRecord, setLastSavedRecord] = useState<VSRIRecord | null>(null);
 
-  // Debug itemInput changes
-  useEffect(() => {
-    console.log('[VSIR-DEBUG] itemInput state changed:', itemInput);
-  }, [itemInput]);
-
-  // Make debug panel available globally for easy access
-  useEffect(() => {
-    (window as any).vsirDebug = showDebugPanel;
-    console.log('🔧 VSIR Debug Panel available! Run vsirDebug() in console or press Ctrl+Shift+D to view current state.');
-    
-    // Add keyboard shortcut for debug panel
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
-        e.preventDefault();
-        showDebugPanel();
-      }
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [itemInput, vendorDeptOrders, records, userUid, isInitialized, isSubmitting, editIdx, autoDeleteEnabled, autoImportEnabled, successMessage]);
+  // Debug hooks removed
 
   // Clear success message after 3 seconds
   useEffect(() => {
@@ -286,23 +165,18 @@ const VSIRModule: React.FC = () => {
         // subscribe to VSIR records
         const unsubVSIR = subscribeVSIRRecords(uid, (docs) => {
           try {
-            console.log('[VSIR] VSIR subscription received', docs.length, 'raw docs');
-            console.log('[VSIR] Raw docs vendorBatchNo:', docs.map(d => ({ id: d.id, poNo: d.poNo, vendorBatchNo: d.vendorBatchNo })));
             const dedupedDocs = deduplicateVSIRRecords(docs.map(d => ({ ...d })) as VSRIRecord[]);
-            console.log('[VSIR] After deduplication:', dedupedDocs.length, 'records');
-            console.log('[VSIR] Deduped docs vendorBatchNo:', dedupedDocs.map(d => ({ id: d.id, poNo: d.poNo, vendorBatchNo: d.vendorBatchNo })));
-            
+
             // Merge strategy: preserve locally edited qty fields from previous state
             setRecords(prev => {
               if (!prev || prev.length === 0) {
-                console.log('[VSIR] No previous state, using fresh docs');
                 prevRecordsRef.current = dedupedDocs;
                 return dedupedDocs;
               }
-              
+
               // Build map of record IDs to preserve qty values
               const map = new Map(prev.map(r => [r.id, r]));
-              
+
               // Merge: keep locally edited qtys from prev state
               const merged = dedupedDocs.map(doc => ({
                 ...doc,
@@ -310,15 +184,10 @@ const VSIRModule: React.FC = () => {
                 reworkQty: map.get(doc.id)?.reworkQty ?? doc.reworkQty,
                 rejectQty: map.get(doc.id)?.rejectQty ?? doc.rejectQty,
               }));
-              
+
               prevRecordsRef.current = merged;
-              console.log('[VSIR] Merged snapshot with preserved qty values');
-              console.log('[VSIR] Merged records vendorBatchNo:', merged.map(r => ({ id: r.id, poNo: r.poNo, vendorBatchNo: r.vendorBatchNo })));
-              console.log('[VSIR] Setting records state...');
               return merged;
             });
-            
-            console.log('[VSIR] Records state updated via merge');
           } catch (e) { console.error('[VSIR] Error mapping vsir docs', e); }
         });
 
@@ -329,54 +198,41 @@ const VSIRModule: React.FC = () => {
 
         // subscribe to PSIR records from Firestore
         const unsubPsirs = subscribePsirs(uid, (docs) => {
-          console.debug('[VSIR] PSIR records updated:', docs.length, 'records');
           setPsirData(docs || []);
         });
 
         // subscribe to purchaseData in real-time (for auto-import)
         const unsubPurchaseData = subscribePurchaseData(uid, (docs) => {
-          console.log('[VSIR] ✅ Purchase data subscription updated:', docs.length, 'records');
-          if (docs.length > 0) {
-            console.log('[VSIR] First purchase data entry:', docs[0]);
-            setPurchaseData(docs || []);
-          } else {
-            setPurchaseData([]);
-          }
+          setPurchaseData(docs || []);
         });
   // Auto-delete all VSIR records if purchaseData is empty
   useEffect(() => {
     const runAutoDelete = async () => {
       if (!autoDeleteEnabled) return;
       if (!userUid || typeof userUid !== 'string') {
-        console.log('[VSIR][DEBUG] Auto-delete not triggered: userUid is missing or invalid.', userUid);
         return;
       }
       if (!Array.isArray(purchaseData) || !Array.isArray(records)) {
-        console.log('[VSIR][DEBUG] Auto-delete not triggered: purchaseData or records is not an array.', purchaseData, records);
         return;
       }
       if (purchaseData.length === 0 && records.length > 0) {
         if (!window.confirm('Auto-delete all VSIR records because purchaseData is empty? This cannot be undone.')) {
           return;
         }
-        console.log('[VSIR][DEBUG] Triggering auto-delete: userUid=', userUid, 'purchaseData.length=', purchaseData.length, 'records.length=', records.length);
         for (const rec of records) {
           try {
             if (!rec || !rec.id) {
-              console.log('[VSIR][DEBUG] Skipping invalid record:', rec);
               continue;
             }
-            console.log('[VSIR][DEBUG] Attempting to delete VSIR record:', rec);
             await deleteVSIRRecord(userUid, String(rec.id));
-            console.log('[VSIR][DEBUG] Successfully auto-deleted VSIR record:', rec.id);
           } catch (e) {
             const errMsg = (e && typeof e === 'object' && 'message' in e) ? (e as any).message : String(e);
-            alert('[VSIR][DEBUG] Failed to auto-delete VSIR record: ' + rec.id + '\nError: ' + errMsg);
-            console.error('[VSIR][DEBUG] Failed to auto-delete VSIR record:', rec.id, e);
+            alert('Failed to auto-delete VSIR record: ' + rec.id + '\nError: ' + errMsg);
+            console.error('[VSIR] Failed to auto-delete VSIR record:', rec.id, e);
           }
         }
       } else {
-        console.log('[VSIR][DEBUG] Auto-delete not triggered. userUid:', userUid, 'purchaseData.length:', purchaseData.length, 'records.length:', records.length);
+        // No auto-delete conditions met
       }
     };
     runAutoDelete();
@@ -385,10 +241,6 @@ const VSIRModule: React.FC = () => {
 
         // subscribe to purchaseOrders in real-time (alternative source)
         const unsubPurchaseOrders = subscribePurchaseOrders(uid, (docs) => {
-          console.log('[VSIR] ✅ Purchase orders subscription updated:', docs.length, 'records');
-          if (docs.length > 0) {
-            console.log('[VSIR] First purchase order entry:', docs[0]);
-          }
           setPurchaseOrders(docs || []);
         });
 
@@ -420,7 +272,6 @@ const VSIRModule: React.FC = () => {
     existingCombinationsRef.current = new Set(
       records.map(r => `${String(r.poNo).trim().toLowerCase()}|${String(r.itemCode).trim().toLowerCase()}`)
     );
-    console.log('[VSIR] Updated dedup cache with', existingCombinationsRef.current.size, 'combinations');
   }, [records]);
 
   // Auto-fill Indent No from PSIR for all records that have poNo but missing indentNo
@@ -470,7 +321,6 @@ const VSIRModule: React.FC = () => {
     if (!isInitialized) {
       return;
     }
-    console.log('[VSIR-DEBUG] Records changed - VSIR persistence handled by Firestore subscriptions and explicit writes');
     try {
       bus.dispatchEvent(new CustomEvent('vsir.updated', { detail: { records } }));
     } catch (err) {
@@ -482,40 +332,19 @@ const VSIRModule: React.FC = () => {
   useEffect(() => {
     const syncVendorBatchFromDept = async () => {
       try {
-        console.log('[VSIR-DEBUG] ========== SYNC CHECK ==========');
         const vendorDepts = vendorDeptOrders || [];
         if (!vendorDepts || vendorDepts.length === 0) {
-          console.log('[VSIR-DEBUG] No vendorDeptData found for sync');
           return;
         }
-        console.log('[VSIR-DEBUG] VendorDept records:', vendorDepts.map((vd: any) => ({ po: vd.materialPurchasePoNo, vendorBatchNo: vd.vendorBatchNo })));
-        console.log('[VSIR-DEBUG] Raw VendorDept records:', vendorDepts.map((vd: any) => ({
-          id: vd.id,
-          materialPurchasePoNo: vd.materialPurchasePoNo,
-          vendorBatchNo: vd.vendorBatchNo,
-          allKeys: Object.keys(vd)
-        })));
-        console.log('[VSIR-DEBUG] Current VSIR records:', records.map(r => ({ poNo: r.poNo, vendorBatchNo: r.vendorBatchNo, invoiceDcNo: r.invoiceDcNo, itemCode: r.itemCode })));
-        
+
         let updated = false;
         const updatedRecords = records.map(record => {
           const hasEmptyVendorBatchNo = !record.vendorBatchNo || !String(record.vendorBatchNo).trim();
           const hasPoNo = !!record.poNo;
-          // Sync vendorBatchNo if PO No is present (removed invoiceDcNo prerequisite)
-          const hasInvoiceDcNo = record.invoiceDcNo && String(record.invoiceDcNo).trim();
-          console.log(`[VSIR-DEBUG] Record ${record.poNo || 'NO-PO'}: hasEmptyVendorBatchNo=${hasEmptyVendorBatchNo}, hasPoNo=${hasPoNo}, hasInvoiceDcNo=${hasInvoiceDcNo}`);
-          
+
           if (hasEmptyVendorBatchNo && hasPoNo) {
-            const match = vendorDepts.find((vd: any) => {
-              const poMatch = String(vd.materialPurchasePoNo || '').trim() === String(record.poNo || '').trim();
-              console.log(`[VSIR-DEBUG]   Comparing: "${vd.materialPurchasePoNo}" === "${record.poNo}" ? ${poMatch}`);
-              return poMatch;
-            });
-            
-            console.log(`[VSIR-DEBUG]   Match result:`, match ? { po: match.materialPurchasePoNo, vendorBatchNo: match.vendorBatchNo } : 'null');
-            
+            const match = vendorDepts.find((vd: any) => String(vd.materialPurchasePoNo || '').trim() === String(record.poNo || '').trim());
             if (match?.vendorBatchNo) {
-              console.log(`[VSIR-DEBUG] ✓ SYNC: Found match for PO ${record.poNo}, syncing vendorBatchNo: ${match.vendorBatchNo}`);
               updated = true;
               return {
                 ...record,
@@ -524,60 +353,44 @@ const VSIRModule: React.FC = () => {
                 reworkQty: record.reworkQty,
                 rejectQty: record.rejectQty
               };
-            } else {
-              console.log(`[VSIR-DEBUG] ✗ No matching VendorDept record found for PO ${record.poNo} (match.vendorBatchNo is falsy)`);
             }
           }
           return record;
         });
-        
+
         if (updated) {
-          console.log('[VSIR-DEBUG] ✓ Records updated, persisting');
-          console.log('[VSIR-DEBUG] Updated records:', updatedRecords.map(r => ({ poNo: r.poNo, vendorBatchNo: r.vendorBatchNo, invoiceDcNo: r.invoiceDcNo })));
           // Persist each updated record to Firestore
           if (userUid) {
             for (const record of updatedRecords) {
               if (record.id) {
-                console.log('[VSIR-DEBUG] Updating VSIR record payload:', { id: record.id, poNo: record.poNo, vendorBatchNo: record.vendorBatchNo });
                 await updateVSIRRecord(userUid, record.id, record);
               }
             }
-          } else {
-            console.log('[VSIR-DEBUG] Cannot persist - user not authenticated');
           }
-          console.log('[VSIR-DEBUG] Setting records state with updated records');
           setRecords(updatedRecords);
-        } else {
-          console.log('[VSIR-DEBUG] No records needed updating');
         }
-        
+
         // Reverse sync: if VSIR has vendorBatchNo and VendorDept doesn't, update VendorDept
         if (userUid) {
           for (const record of records) {
             if (record.vendorBatchNo && record.poNo) {
               const match = vendorDepts.find(vd => String(vd.materialPurchasePoNo || '').trim() === String(record.poNo || '').trim());
               if (match && !match.vendorBatchNo && match.id) {
-                console.log(`[VSIR-SYNC] Updating VendorDept ${match.id} with vendorBatchNo: ${record.vendorBatchNo} from VSIR record ${record.id}`);
                 const updatePayload = { ...match, vendorBatchNo: record.vendorBatchNo };
-                console.log('[VSIR-SYNC] VendorDept update payload:', { id: match.id, poNo: match.materialPurchasePoNo, vendorBatchNo: record.vendorBatchNo });
                 await updateVendorDept(userUid, match.id, updatePayload);
               }
             }
           }
         }
-        
-        console.log('[VSIR-DEBUG] ==============================');
       } catch (err) {
         console.error('[VSIR][SyncVendorBatch] Error:', err);
       }
     };
 
     const handleVendorDeptUpdate = (event: any) => {
-      console.log('[VSIR-DEBUG] vendorDept.updated event received, event.detail:', event?.detail);
       syncVendorBatchFromDept();
     };
     bus.addEventListener('vendorDept.updated', handleVendorDeptUpdate);
-    console.log('[VSIR-DEBUG] Calling syncVendorBatchFromDept on mount');
     syncVendorBatchFromDept();
 
     return () => {
@@ -755,11 +568,9 @@ const VSIRModule: React.FC = () => {
   // Fill missing OA/Batch from PSIR/VendorDept (once)
   useEffect(() => {
     if (records.length === 0) {
-      console.log('[VSIR-DEBUG] Fill missing effect: no records');
       return;
     }
     try {
-      console.log('[VSIR-DEBUG] Fill missing effect: processing', records.length, 'records');
       const psirs = psirData || [];
       const vendorDepts = vendorDeptOrders || [];
       const vendorIssuesList = vendorIssues || [];
@@ -809,11 +620,8 @@ const VSIRModule: React.FC = () => {
         return record;
       });
 
-        if (updated) {
-        console.log('[VSIR-DEBUG] Fill missing: updated records, calling setRecords');
+      if (updated) {
         setRecords(updatedRecords);
-      } else {
-        console.log('[VSIR-DEBUG] Fill missing: no updates needed');
       }
     } catch (e) {
       console.error('[VSIR][FillMissing] Error:', e);
@@ -896,28 +704,19 @@ const VSIRModule: React.FC = () => {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
-    console.log('[VSIR] handleChange called:', name, '=', value, 'type:', type);
 
     if (name === 'itemName') {
       const found = itemMaster.find(item => item.itemName === value);
-      setItemInput(prev => {
-        const newState = {
-          ...prev,
-          itemName: value,
-          itemCode: found ? found.itemCode : '',
-        };
-        console.log('[VSIR] Updated itemInput (itemName change):', newState);
-        return newState;
-      });
+      setItemInput(prev => ({
+        ...prev,
+        itemName: value,
+        itemCode: found ? found.itemCode : '',
+      }));
     } else {
-      setItemInput(prev => {
-        const newState = {
-          ...prev,
-          [name]: type === 'number' ? Number(value) : value,
-        };
-        console.log('[VSIR] Updated itemInput (field change):', newState);
-        return newState;
-      });
+      setItemInput(prev => ({
+        ...prev,
+        [name]: type === 'number' ? Number(value) : value,
+      }));
     }
   };
 
@@ -1206,20 +1005,7 @@ const VSIRModule: React.FC = () => {
           <input type="checkbox" checked={autoImportEnabled} onChange={e => setAutoImportEnabled(e.target.checked)} />
           Enable Auto-Import (dangerous)
         </label>
-        <button 
-          onClick={showDebugPanel}
-          style={{ 
-            padding: '6px 12px', 
-            background: '#2196f3', 
-            color: '#fff', 
-            border: 'none', 
-            borderRadius: 4, 
-            cursor: 'pointer',
-            fontSize: '12px'
-          }}
-        >
-          🔍 Debug Panel
-        </button>
+        {/* Debug panel removed */}
       </div>
       {successMessage && (
         <div style={{ 
@@ -1289,26 +1075,7 @@ const VSIRModule: React.FC = () => {
         >
           {isSubmitting ? 'Saving...' : (editIdx !== null ? 'Update' : 'Add')}
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            console.log('[VSIR-DEBUG] Current itemInput state:', itemInput);
-            alert('Check console for current itemInput state');
-          }}
-          style={{
-            padding: '10px 24px',
-            background: '#ff9800',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 4,
-            fontWeight: 500,
-            marginTop: 24,
-            marginLeft: 16,
-            cursor: 'pointer'
-          }}
-        >
-          Debug State
-        </button>
+        {/* Debug State button removed */}
         <button
           type="button"
           onClick={() => {
