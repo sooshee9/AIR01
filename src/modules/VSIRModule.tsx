@@ -290,6 +290,7 @@ const VSIRModule: React.FC = () => {
             console.log('[VSIR] VSIR subscription received', docs.length, 'raw docs');
             const dedupedDocs = deduplicateVSIRRecords(docs.map(d => ({ ...d })) as VSRIRecord[]);
             console.log('[VSIR] After deduplication:', dedupedDocs.length, 'records');
+            console.log('[VSIR] Deduped docs vendorBatchNo:', dedupedDocs.map(d => ({ id: d.id, poNo: d.poNo, vendorBatchNo: d.vendorBatchNo })));
             
             // Merge strategy: preserve locally edited qty fields from previous state
             setRecords(prev => {
@@ -305,6 +306,7 @@ const VSIRModule: React.FC = () => {
               // Merge: keep locally edited qtys from prev state
               const merged = dedupedDocs.map(doc => ({
                 ...doc,
+                vendorBatchNo: map.get(doc.id)?.vendorBatchNo ?? doc.vendorBatchNo,
                 okQty: map.get(doc.id)?.okQty ?? doc.okQty,
                 reworkQty: map.get(doc.id)?.reworkQty ?? doc.reworkQty,
                 rejectQty: map.get(doc.id)?.rejectQty ?? doc.rejectQty,
@@ -547,29 +549,6 @@ const VSIRModule: React.FC = () => {
           setRecords(updatedRecords);
         } else {
           console.log('[VSIR-DEBUG] No records needed updating');
-        }
-        
-        // Generate vendorBatchNo for VSIR records that have empty vendorBatchNo
-        const recordsToUpdateWithGeneratedVB = records.filter(r => !r.vendorBatchNo?.trim() && r.poNo && r.id);
-        if (recordsToUpdateWithGeneratedVB.length > 0 && userUid) {
-          console.log('[VSIR-SYNC] Generating vendorBatchNo for VSIR records:', recordsToUpdateWithGeneratedVB.map(r => ({ id: r.id, poNo: r.poNo })));
-          for (const record of recordsToUpdateWithGeneratedVB) {
-            let vb = getVendorBatchNoForPO(record.poNo);
-            if (!vb) vb = generateVendorBatchNo();
-            console.log(`[VSIR-SYNC] Generated vendorBatchNo for record ${record.id}: ${vb}`);
-            setDebugPayloads(prev => [...prev, { type: 'VSIR_GENERATE_VB', id: record.id, poNo: record.poNo, vendorBatchNo: vb, timestamp: new Date().toISOString() }]);
-            await updateVSIRRecord(userUid, record.id, { ...record, vendorBatchNo: vb });
-          }
-          // Update local state
-          const updatedRecordsWithVB = records.map(r => {
-            if (!r.vendorBatchNo?.trim() && r.poNo && r.id) {
-              let vb = getVendorBatchNoForPO(r.poNo);
-              if (!vb) vb = generateVendorBatchNo();
-              return { ...r, vendorBatchNo: vb };
-            }
-            return r;
-          });
-          setRecords(updatedRecordsWithVB);
         }
         
         // Reverse sync: if VSIR has vendorBatchNo and VendorDept doesn't, update VendorDept
@@ -1065,7 +1044,9 @@ const VSIRModule: React.FC = () => {
           throw new Error('Invalid record for update');
         }
         console.log('[VSIR] Updating record:', record.id);
-        await updateVSIRRecord(userUid, String(record.id), { ...record, ...finalItemInput, id: record.id });
+        const updateData = { ...record, ...finalItemInput, id: record.id };
+        console.log('[VSIR] Update data being sent:', updateData);
+        await updateVSIRRecord(userUid, String(record.id), updateData);
         console.log('[VSIR] Update successful');
         setSuccessMessage('Record updated successfully!');
       } else {
