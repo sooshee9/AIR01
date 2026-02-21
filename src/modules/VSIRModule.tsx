@@ -98,6 +98,7 @@ const VSIRModule: React.FC = () => {
   const [autoDeleteEnabled, setAutoDeleteEnabled] = useState<boolean>(false);
   const [autoImportEnabled, setAutoImportEnabled] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string>('');
+  const [debugPayloads, setDebugPayloads] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Debug panel function
@@ -534,12 +535,15 @@ const VSIRModule: React.FC = () => {
           if (userUid) {
             for (const record of updatedRecords) {
               if (record.id) {
+                console.log('[VSIR-DEBUG] Updating VSIR record payload:', { id: record.id, poNo: record.poNo, vendorBatchNo: record.vendorBatchNo });
+                setDebugPayloads(prev => [...prev, { type: 'VSIR_UPDATE', id: record.id, poNo: record.poNo, vendorBatchNo: record.vendorBatchNo, timestamp: new Date().toISOString() }]);
                 await updateVSIRRecord(userUid, record.id, record);
               }
             }
           } else {
             console.log('[VSIR-DEBUG] Cannot persist - user not authenticated');
           }
+          console.log('[VSIR-DEBUG] Setting records state with updated records');
           setRecords(updatedRecords);
         } else {
           console.log('[VSIR-DEBUG] No records needed updating');
@@ -552,7 +556,10 @@ const VSIRModule: React.FC = () => {
               const match = vendorDepts.find(vd => String(vd.materialPurchasePoNo || '').trim() === String(record.poNo || '').trim());
               if (match && !match.vendorBatchNo && match.id) {
                 console.log(`[VSIR-SYNC] Updating VendorDept ${match.id} with vendorBatchNo: ${record.vendorBatchNo} from VSIR record ${record.id}`);
-                await updateVendorDept(userUid, match.id, { ...match, vendorBatchNo: record.vendorBatchNo });
+                const updatePayload = { ...match, vendorBatchNo: record.vendorBatchNo };
+                console.log('[VSIR-SYNC] VendorDept update payload:', { id: match.id, poNo: match.materialPurchasePoNo, vendorBatchNo: record.vendorBatchNo });
+                setDebugPayloads(prev => [...prev, { type: 'VENDOR_DEPT_UPDATE', id: match.id, poNo: match.materialPurchasePoNo, vendorBatchNo: record.vendorBatchNo, fromVSIR: record.id, timestamp: new Date().toISOString() }]);
+                await updateVendorDept(userUid, match.id, updatePayload);
               }
             }
           }
@@ -1299,6 +1306,50 @@ const VSIRModule: React.FC = () => {
           Clear Form
         </button>
       </form>
+      
+      {/* Payload Debug Panel */}
+      {debugPayloads.length > 0 && (
+        <div style={{
+          marginBottom: 16,
+          padding: '12px',
+          backgroundColor: '#f3e5f5',
+          border: '1px solid #9c27b0',
+          borderRadius: 4
+        }}>
+          <h4 style={{ margin: '0 0 8px 0', color: '#7b1fa2' }}>🔄 Update Payloads ({debugPayloads.length})</h4>
+          <div style={{ maxHeight: '200px', overflowY: 'auto', fontSize: '11px' }}>
+            {debugPayloads.slice(-10).map((payload, idx) => (
+              <div key={idx} style={{
+                marginBottom: '4px',
+                padding: '4px',
+                backgroundColor: '#fff',
+                borderRadius: '2px',
+                border: '1px solid #ddd'
+              }}>
+                <strong>{payload.type}</strong> - {payload.timestamp}<br/>
+                ID: {payload.id}, PO: {payload.poNo}, VendorBatch: {payload.vendorBatchNo}
+                {payload.fromVSIR && <span> (from VSIR: {payload.fromVSIR})</span>}
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => setDebugPayloads([])}
+            style={{
+              marginTop: '8px',
+              padding: '4px 8px',
+              background: '#9c27b0',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '2px',
+              cursor: 'pointer',
+              fontSize: '11px'
+            }}
+          >
+            Clear Payloads
+          </button>
+        </div>
+      )}
+      
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', border: '1px solid #ccc', fontSize: 12 }}>
           <thead>
