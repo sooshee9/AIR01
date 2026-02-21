@@ -306,7 +306,6 @@ const VSIRModule: React.FC = () => {
               // Merge: keep locally edited qtys from prev state
               const merged = dedupedDocs.map(doc => ({
                 ...doc,
-                vendorBatchNo: map.get(doc.id)?.vendorBatchNo ?? doc.vendorBatchNo,
                 okQty: map.get(doc.id)?.okQty ?? doc.okQty,
                 reworkQty: map.get(doc.id)?.reworkQty ?? doc.reworkQty,
                 rejectQty: map.get(doc.id)?.rejectQty ?? doc.rejectQty,
@@ -314,6 +313,7 @@ const VSIRModule: React.FC = () => {
               
               prevRecordsRef.current = merged;
               console.log('[VSIR] Merged snapshot with preserved qty values');
+              console.log('[VSIR] Merged records vendorBatchNo:', merged.map(r => ({ id: r.id, poNo: r.poNo, vendorBatchNo: r.vendorBatchNo })));
               return merged;
             });
             
@@ -1043,6 +1043,7 @@ const VSIRModule: React.FC = () => {
         if (!record || !record.id) {
           throw new Error('Invalid record for update');
         }
+        console.log('[VSIR] Record to update:', record);
         console.log('[VSIR] Updating record:', record.id);
         const updateData = { ...record, ...finalItemInput, id: record.id };
         console.log('[VSIR] Update data being sent:', updateData);
