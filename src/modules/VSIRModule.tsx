@@ -272,7 +272,7 @@ const VSIRModule: React.FC = () => {
     existingCombinationsRef.current = new Set(
       records.map(r => `${String(r.poNo).trim().toLowerCase()}|${String(r.itemCode).trim().toLowerCase()}`)
     );
-  }, [records]);
+  }, [records, vendorDeptOrders, userUid]);
 
   // Auto-fill Indent No from PSIR for all records that have poNo but missing indentNo
   // PSIR data is already subscribed in the auth effect above, just use it here
