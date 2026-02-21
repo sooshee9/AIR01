@@ -287,6 +287,7 @@ const VSIRModule: React.FC = () => {
         const unsubVSIR = subscribeVSIRRecords(uid, (docs) => {
           try {
             console.log('[VSIR] VSIR subscription received', docs.length, 'raw docs');
+            console.log('[VSIR] Raw docs vendorBatchNo:', docs.map(d => ({ id: d.id, poNo: d.poNo, vendorBatchNo: d.vendorBatchNo })));
             const dedupedDocs = deduplicateVSIRRecords(docs.map(d => ({ ...d })) as VSRIRecord[]);
             console.log('[VSIR] After deduplication:', dedupedDocs.length, 'records');
             console.log('[VSIR] Deduped docs vendorBatchNo:', dedupedDocs.map(d => ({ id: d.id, poNo: d.poNo, vendorBatchNo: d.vendorBatchNo })));
@@ -313,6 +314,7 @@ const VSIRModule: React.FC = () => {
               prevRecordsRef.current = merged;
               console.log('[VSIR] Merged snapshot with preserved qty values');
               console.log('[VSIR] Merged records vendorBatchNo:', merged.map(r => ({ id: r.id, poNo: r.poNo, vendorBatchNo: r.vendorBatchNo })));
+              console.log('[VSIR] Setting records state...');
               return merged;
             });
             
@@ -1044,7 +1046,9 @@ const VSIRModule: React.FC = () => {
         console.log('[VSIR] Updating record:', record.id);
         const updateData = { ...record, ...finalItemInput, id: record.id };
         console.log('[VSIR] Update data being sent:', updateData);
+        console.log('[VSIR] Firestore update starting...');
         await updateVSIRRecord(userUid, String(record.id), updateData);
+        console.log('[VSIR] Firestore update completed');
         console.log('[VSIR] Update successful');
         setSuccessMessage('Record updated successfully!');
       } else {
@@ -1347,6 +1351,7 @@ const VSIRModule: React.FC = () => {
                   }
                   if (field.key === 'vendorBatchNo') {
                     const vendorBatchNo = rec.vendorBatchNo || getVendorBatchNoForPO(rec.poNo) || '';
+                    console.log(`[VSIR] Table rendering vendorBatchNo for record ${rec.id}: rec.vendorBatchNo="${rec.vendorBatchNo}", computed="${vendorBatchNo}"`);
                     return <td key={field.key} style={cellCommon}>{vendorBatchNo}</td>;
                   }
                   return <td key={field.key} style={cellCommon}>{(rec as any)[field.key]}</td>;
