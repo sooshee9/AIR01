@@ -122,6 +122,20 @@ const VSIRModule: React.FC = () => {
     remarks: '',
   };
 
+  // Helper: wrap a promise with a client-side timeout to prevent UI hanging
+  const withTimeout = <T,>(p: Promise<T>, ms = 10000): Promise<T> => {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('timeout')), ms);
+      p.then((v) => {
+        clearTimeout(timer);
+        resolve(v);
+      }).catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+  };
+
   const [itemInput, setItemInput] = useState<Omit<VSRIRecord, 'id'>>(initialItemInput);
   const [lastSavedRecord, setLastSavedRecord] = useState<VSRIRecord | null>(null);
 
@@ -224,7 +238,7 @@ const VSIRModule: React.FC = () => {
             if (!rec || !rec.id) {
               continue;
             }
-            await deleteVSIRRecord(userUid, String(rec.id));
+            await withTimeout(deleteVSIRRecord(userUid, String(rec.id)), 15000);
           } catch (e) {
             const errMsg = (e && typeof e === 'object' && 'message' in e) ? (e as any).message : String(e);
             alert('Failed to auto-delete VSIR record: ' + rec.id + '\nError: ' + errMsg);
@@ -306,7 +320,7 @@ const VSIRModule: React.FC = () => {
         updatedRecords.forEach(async (rec) => {
           if (rec.id) {
             try {
-              await updateVSIRRecord(userUid, String(rec.id), rec);
+              await withTimeout(updateVSIRRecord(userUid, String(rec.id), rec), 15000);
             } catch (err) {
               console.error('[VSIR] Error persisting auto-filled indentNo:', err);
             }
@@ -359,11 +373,15 @@ const VSIRModule: React.FC = () => {
         });
 
         if (updated) {
-          // Persist each updated record to Firestore
+          // Persist each updated record to Firestore (with timeout)
           if (userUid) {
             for (const record of updatedRecords) {
               if (record.id) {
-                await updateVSIRRecord(userUid, record.id, record);
+                try {
+                  await withTimeout(updateVSIRRecord(userUid, record.id, record), 15000);
+                } catch (err) {
+                  console.error('[VSIR] Failed to persist updated VSIR record:', record.id, err);
+                }
               }
             }
           }
@@ -377,7 +395,11 @@ const VSIRModule: React.FC = () => {
               const match = vendorDepts.find(vd => String(vd.materialPurchasePoNo || '').trim() === String(record.poNo || '').trim());
               if (match && !match.vendorBatchNo && match.id) {
                 const updatePayload = { ...match, vendorBatchNo: record.vendorBatchNo };
-                await updateVendorDept(userUid, match.id, updatePayload);
+                try {
+                  await withTimeout(updateVendorDept(userUid, match.id, updatePayload), 15000);
+                } catch (err) {
+                  console.error('[VSIR] Failed to persist VendorDept update:', match.id, err);
+                }
               }
             }
           }
@@ -543,7 +565,7 @@ const VSIRModule: React.FC = () => {
           };
 
           try {
-            await addVSIRRecord(userUid, newRecord);
+            await withTimeout(addVSIRRecord(userUid, newRecord), 15000);
             importCount++;
             console.log('[VSIR]   ✅ imported', dedupeKey);
           } catch (err) {
@@ -849,13 +871,13 @@ const VSIRModule: React.FC = () => {
         const updateData = { ...record, ...finalItemInput, id: record.id };
         console.log('[VSIR] Update data being sent:', updateData);
         console.log('[VSIR] Firestore update starting...');
-        await updateVSIRRecord(userUid, String(record.id), updateData);
+        await withTimeout(updateVSIRRecord(userUid, String(record.id), updateData), 15000);
         console.log('[VSIR] Firestore update completed');
         console.log('[VSIR] Update successful');
         setSuccessMessage('Record updated successfully!');
       } else {
         console.log('[VSIR] Adding new record');
-        await addVSIRRecord(userUid, finalItemInput);
+        await withTimeout(addVSIRRecord(userUid, finalItemInput), 15000);
         console.log('[VSIR] Add successful');
         setSuccessMessage('Record added successfully!');
       }
@@ -900,7 +922,7 @@ const VSIRModule: React.FC = () => {
                 newOkQty: finalItemInput.okQty
               });
 
-              await updateVendorDept(userUid, vendorDeptMatch.id, updatedVendorDept);
+              await withTimeout(updateVendorDept(userUid, vendorDeptMatch.id, updatedVendorDept), 15000);
               console.log(`[VSIR-${operation}] Vendor Dept OK Qty sync successful`);
 
               // Dispatch event to notify other modules
@@ -1152,13 +1174,11 @@ const VSIRModule: React.FC = () => {
                       }
                       console.log('[VSIR] Deleting record:', toDelete);
                       if (userUid && toDelete && toDelete.id) {
-                        deleteVSIRRecord(userUid, String(toDelete.id))
+                        withTimeout(deleteVSIRRecord(userUid, String(toDelete.id)), 15000)
                           .then(() => {
-                            console.log('[VSIR] Successfully deleted from Firestore:', toDelete.id);
                             setRecords(prev => prev.filter(r => r.id !== toDelete.id));
                           })
                           .catch((e) => {
-                            console.error('[VSIR] deleteVSIRRecord failed:', e, 'Record ID:', toDelete.id);
                             alert('Failed to delete record from Firestore. Please check your permissions and network.\nError: ' + (e && e.message ? e.message : e));
                           });
                       } else {
