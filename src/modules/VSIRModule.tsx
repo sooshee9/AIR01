@@ -546,12 +546,14 @@ const VSIRModule: React.FC = () => {
         }
         
         // Reverse sync: if VSIR has vendorBatchNo and VendorDept doesn't, update VendorDept
-        for (const record of records) {
-          if (record.vendorBatchNo && record.poNo) {
-            const match = vendorDepts.find(vd => String(vd.materialPurchasePoNo || '').trim() === String(record.poNo || '').trim());
-            if (match && !match.vendorBatchNo) {
-              console.log(`[VSIR-SYNC] Updating VendorDept ${match.id} with vendorBatchNo: ${record.vendorBatchNo} from VSIR record ${record.id}`);
-              await updateVendorDept(userUid, match.id, { ...match, vendorBatchNo: record.vendorBatchNo });
+        if (userUid) {
+          for (const record of records) {
+            if (record.vendorBatchNo && record.poNo) {
+              const match = vendorDepts.find(vd => String(vd.materialPurchasePoNo || '').trim() === String(record.poNo || '').trim());
+              if (match && !match.vendorBatchNo && match.id) {
+                console.log(`[VSIR-SYNC] Updating VendorDept ${match.id} with vendorBatchNo: ${record.vendorBatchNo} from VSIR record ${record.id}`);
+                await updateVendorDept(userUid, match.id, { ...match, vendorBatchNo: record.vendorBatchNo });
+              }
             }
           }
         }
