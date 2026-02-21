@@ -549,6 +549,29 @@ const VSIRModule: React.FC = () => {
           console.log('[VSIR-DEBUG] No records needed updating');
         }
         
+        // Generate vendorBatchNo for VSIR records that have empty vendorBatchNo
+        const recordsToUpdateWithGeneratedVB = records.filter(r => !r.vendorBatchNo?.trim() && r.poNo && r.id);
+        if (recordsToUpdateWithGeneratedVB.length > 0 && userUid) {
+          console.log('[VSIR-SYNC] Generating vendorBatchNo for VSIR records:', recordsToUpdateWithGeneratedVB.map(r => ({ id: r.id, poNo: r.poNo })));
+          for (const record of recordsToUpdateWithGeneratedVB) {
+            let vb = getVendorBatchNoForPO(record.poNo);
+            if (!vb) vb = generateVendorBatchNo();
+            console.log(`[VSIR-SYNC] Generated vendorBatchNo for record ${record.id}: ${vb}`);
+            setDebugPayloads(prev => [...prev, { type: 'VSIR_GENERATE_VB', id: record.id, poNo: record.poNo, vendorBatchNo: vb, timestamp: new Date().toISOString() }]);
+            await updateVSIRRecord(userUid, record.id, { ...record, vendorBatchNo: vb });
+          }
+          // Update local state
+          const updatedRecordsWithVB = records.map(r => {
+            if (!r.vendorBatchNo?.trim() && r.poNo && r.id) {
+              let vb = getVendorBatchNoForPO(r.poNo);
+              if (!vb) vb = generateVendorBatchNo();
+              return { ...r, vendorBatchNo: vb };
+            }
+            return r;
+          });
+          setRecords(updatedRecordsWithVB);
+        }
+        
         // Reverse sync: if VSIR has vendorBatchNo and VendorDept doesn't, update VendorDept
         if (userUid) {
           for (const record of records) {
